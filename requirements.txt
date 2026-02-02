@@ -1,26 +1,13 @@
-# الأساسيات للبوت
 python-telegram-bot==21.3
 python-dotenv==1.0.1
-
-# الذكاء الاصطناعي
-google-generativeai==0.3.3
-
-# قاعدة البيانات
+google-generativeai==0.8.4
 pymongo[srv]==4.7.2
-
-# PDF (بدون مشاكل توافق)
 PyPDF2==3.0.1
 reportlab==4.1.0
-
-# النصوص العربية
 arabic-reshaper==3.1.0
 python-bidi==0.4.2
-
-# مساعدات
 requests==2.31.0
 aiohttp==3.9.5
 pytz==2024.1
-
-# الصور (اختياري - احذفه إذا فيه مشاكل)
-Pillow==10.3.0
-pdf2image==1.17.0
+pymongo==4.7.2
+pillow==10.3.0
