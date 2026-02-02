@@ -1,427 +1,1814 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
-بوت تليجرام للتعليم - يلا نتعلم
-مطور بواسطة: Allawi
+بوت تليجرام متكامل للتعليم - "يلا نتعلم"
+تم التطوير بواسطة: Allawi
 الدعم الفني: @Allawi04
+أيدي المشرف: 6130994941
 """
 
+# ============================================
+# المكتبات الأساسية
+# ============================================
 import os
+import sys
 import logging
 import json
 import asyncio
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+import sqlite3
+import threading
+import time
 import random
 import string
 import hashlib
+import re
+import math
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple, Any, Union
 from pathlib import Path
+from functools import wraps
+from collections import defaultdict
+import base64
+import io
+import urllib.parse
+import csv
+from enum import Enum
 
-# المكتبات الأساسية
+# مكتبات تليجرام
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, 
-    ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+    Update, 
+    InlineKeyboardButton, 
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, 
+    KeyboardButton,
+    ReplyKeyboardRemove,
+    WebAppInfo,
+    InputFile,
+    Document,
+    PhotoSize,
+    InputMediaDocument,
+    InputMediaPhoto,
+    BotCommand,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChatAdministrators,
+    ChatPermissions
 )
+from telegram.constants import ParseMode, ChatAction
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, 
-    CallbackQueryHandler, ContextTypes, 
-    ConversationHandler, filters
+    Application,
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters,
+    PicklePersistence,
+    JobQueue
 )
-from telegram.constants import ParseMode
+from telegram.error import TelegramError, BadRequest, NetworkError
 
-# مكتبات الذكاء الاصطناعي والتعامل مع PDF
+# مكتبات الذكاء الاصطناعي وPDF
 import google.generativeai as genai
-from PyPDF2 import PdfReader
-import textwrap
-from reportlab.lib.pagesizes import letter
+from PyPDF2 import PdfReader, PdfWriter
+import pdfkit
+from reportlab.lib.pagesizes import A4, letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image as ReportLabImage
+from reportlab.lib.units import inch, cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 import arabic_reshaper
 from bidi.algorithm import get_display
-from PIL import Image
-import io
+from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 from deep_translator import GoogleTranslator
 
 # مكتبات إضافية
-import sqlite3
-import threading
-from functools import wraps
-import re
+import requests
+from bs4 import BeautifulSoup
+import aiohttp
+import qrcode
+from io import BytesIO
+import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
-# إعدادات التكوين
+# إعدادات التكوين الأساسية
 # ============================================
 
-# توكن البوت
-TOKEN = "8481569753:AAHTdbWwu0BHmoo_iHPsye8RkTptWzfiQWU"
+# توكن البوت - ضع التوكن الخاص بك هنا
+TELEGRAM_BOT_TOKEN = "8481569753:AAHTdbWwu0BHmoo_iHPsye8RkTptWzfiQWU"
 
-# إعدادات الذكاء الاصطناعي
+# مفتاح API لـ Gemini AI - ضع المفتاح الخاص بك هنا
 GEMINI_API_KEY = "AIzaSyAqlug21bw_eI60ocUtc1Z76NhEUc-zuzY"
 
 # إعدادات المطور
-ADMIN_ID = 6130994941  # آيدي المطور
+ADMIN_USER_ID = 6130994941  # أيدي المطور
 ADMIN_USERNAME = "@Allawi04"  # يوزر المطور
 
 # إعدادات البوت
 BOT_USERNAME = "@FC4Xbot"
 BOT_NAME = "يلا نتعلم"
+BOT_DESCRIPTION = "بوت تعليمي ذكي للطلاب العراقيين"
 
 # إعدادات العملة
-CURRENCY = "دينار عراقي"
-MIN_SERVICE_PRICE = 1000
-WELCOME_BONUS = 1000
+CURRENCY_NAME = "دينار عراقي"
+CURRENCY_SYMBOL = "د.ع"
+MINIMUM_SERVICE_PRICE = 1000
+WELCOME_BONUS_AMOUNT = 1000
 
-# تسعيرات الخدمات (قابلة للتعديل من لوحة التحكم)
-SERVICE_PRICES = {
-    "عفوية": 1000,  # حساب درجة العفو
-    "تلخيص": 1000,  # تلخيص الملازم
-    "أسئلة": 1000,  # أسئلة وأجوبة
-    "ملازم": 1000   # قسم الملازم
+# إعدادات قاعدة البيانات
+DATABASE_NAME = "learning_bot.db"
+BACKUP_INTERVAL = 3600  # ساعة واحدة بالثواني
+
+# إعدادات الملفات
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.txt'}
+TEMP_DIR = "temp_files"
+LOG_DIR = "logs"
+
+# إعدادات الترجمة
+TRANSLATION_LANGUAGES = {
+    'ar': 'العربية',
+    'en': 'الإنجليزية',
+    'ku': 'الكردية'
 }
 
-# حالات المحادثة
-CALCULATE, COURSE1, COURSE2, COURSE3, WAITING_PDF, PROCESSING_PDF = range(6)
-ASK_QUESTION, WAITING_ANSWER, ADMIN_PANEL, CHARGE_USER, ADD_POINTS = range(6, 11)
-BROADCAST, ADD_MATERIAL, MATERIAL_NAME, MATERIAL_DESC, MATERIAL_FILE = range(11, 16)
-SET_PRICE, MAINTENANCE, INVITE_SETTINGS = range(16, 19)
+# ============================================
+# إعدادات التسجيل (Logging)
+# ============================================
 
-# إعداد التسجيل
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# تسجيل الخطوط العربية
-def setup_arabic_fonts():
-    """تسجيل الخطوط العربية للاستخدام في ملفات PDF"""
-    try:
-        # استخدام خط افتراضي (يجب تثبيت خط عربي على النظام)
-        arabic_font_path = "/usr/share/fonts/truetype/arabic/arial.ttf"
-        if os.path.exists(arabic_font_path):
-            pdfmetrics.registerFont(TTFont('Arabic', arabic_font_path))
-        else:
-            # استخدام خط بديل إذا لم يوجد
-            pdfmetrics.registerFont(TTFont('Arabic', 'DejaVuSans'))
-        
-        pdfmetrics.registerFont(TTFont('English', 'Helvetica'))
-        return True
-    except Exception as e:
-        logger.error(f"خطأ في تسجيل الخطوط: {e}")
-        return False
-
-# إعداد الذكاء الاصطناعي
-def setup_ai():
-    """تهيئة نموذج الذكاء الاصطناعي"""
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        
-        # إنشاء النموذج
-        generation_config = {
-            "temperature": 0.7,
-            "top_p": 0.8,
-            "top_k": 40,
-            "max_output_tokens": 2048,
-        }
-        
-        safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+def setup_logging():
+    """إعداد نظام التسجيل"""
+    os.makedirs(LOG_DIR, exist_ok=True)
+    
+    log_filename = os.path.join(LOG_DIR, f"bot_{datetime.now().strftime('%Y%m%d')}.log")
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_filename, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
         ]
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-pro",
-            generation_config=generation_config,
-            safety_settings=safety_settings
-        )
-        
-        return model
-    except Exception as e:
-        logger.error(f"خطأ في تهيئة الذكاء الاصطناعي: {e}")
-        return None
+    )
+    
+    return logging.getLogger(__name__)
+
+logger = setup_logging()
 
 # ============================================
-# قاعدة البيانات
+# نظام قاعدة البيانات المتقدم
 # ============================================
 
-class Database:
-    def __init__(self):
-        self.conn = sqlite3.connect('bot_database.db', check_same_thread=False)
-        self.cursor = self.conn.cursor()
+class AdvancedDatabase:
+    """نظام قاعدة بيانات متقدم مع نسخ احتياطي تلقائي"""
+    
+    def __init__(self, db_name: str = DATABASE_NAME):
+        self.db_name = db_name
+        self.connection = None
+        self.cursor = None
+        self.lock = threading.Lock()
         self.init_database()
+        self.start_backup_scheduler()
     
     def init_database(self):
-        """تهيئة جداول قاعدة البيانات"""
-        # جدول المستخدمين
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                balance INTEGER DEFAULT 0,
-                invite_code TEXT UNIQUE,
-                invited_by INTEGER,
-                join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                banned INTEGER DEFAULT 0
-            )
-        ''')
-        
-        # جدول العمليات
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                amount INTEGER,
-                type TEXT,
-                description TEXT,
-                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # جدول الخدمات المستخدمة
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS services (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                service_type TEXT,
-                cost INTEGER,
-                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # جدول المواد التعليمية
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS materials (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                description TEXT,
-                file_id TEXT,
-                stage TEXT,
-                added_by INTEGER,
-                added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # جدول الإعدادات
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        ''')
-        
-        # إضافة الإعدادات الافتراضية
+        """تهيئة جميع جداول قاعدة البيانات"""
+        with self.lock:
+            self.connection = sqlite3.connect(self.db_name, check_same_thread=False)
+            self.connection.row_factory = sqlite3.Row
+            self.cursor = self.connection.cursor()
+            
+            # جدول المستخدمين
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    phone_number TEXT,
+                    balance INTEGER DEFAULT 0,
+                    total_spent INTEGER DEFAULT 0,
+                    total_earned INTEGER DEFAULT 0,
+                    invite_code TEXT UNIQUE,
+                    invited_by INTEGER,
+                    referral_count INTEGER DEFAULT 0,
+                    language_code TEXT DEFAULT 'ar',
+                    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_premium INTEGER DEFAULT 0,
+                    is_banned INTEGER DEFAULT 0,
+                    ban_reason TEXT,
+                    settings TEXT DEFAULT '{}',
+                    metadata TEXT DEFAULT '{}'
+                )
+            ''')
+            
+            # جدول العمليات المالية
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS transactions (
+                    transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount INTEGER,
+                    transaction_type TEXT,
+                    description TEXT,
+                    reference_id TEXT,
+                    status TEXT DEFAULT 'completed',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # جدول استخدام الخدمات
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS service_usage (
+                    usage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    service_name TEXT,
+                    service_type TEXT,
+                    cost INTEGER,
+                    details TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # جدول المواد التعليمية
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS educational_materials (
+                    material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    file_id TEXT,
+                    file_type TEXT,
+                    file_size INTEGER,
+                    category TEXT,
+                    subcategory TEXT,
+                    stage TEXT,
+                    subject TEXT,
+                    uploaded_by INTEGER,
+                    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    download_count INTEGER DEFAULT 0,
+                    rating REAL DEFAULT 0.0,
+                    is_approved INTEGER DEFAULT 1,
+                    tags TEXT,
+                    metadata TEXT DEFAULT '{}',
+                    FOREIGN KEY (uploaded_by) REFERENCES users (user_id) ON DELETE SET NULL
+                )
+            ''')
+            
+            # جدول الإعدادات العامة
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS bot_settings (
+                    setting_key TEXT PRIMARY KEY,
+                    setting_value TEXT,
+                    description TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by INTEGER
+                )
+            ''')
+            
+            # جدول أسعار الخدمات
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS service_prices (
+                    service_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    service_name TEXT UNIQUE,
+                    service_code TEXT UNIQUE,
+                    base_price INTEGER,
+                    current_price INTEGER,
+                    is_active INTEGER DEFAULT 1,
+                    min_price INTEGER,
+                    max_price INTEGER,
+                    description TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # جدول الإشعارات
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS notifications (
+                    notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    notification_type TEXT,
+                    title TEXT,
+                    message TEXT,
+                    is_read INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    read_at TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # جدول الدعوات والإحالات
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS referrals (
+                    referral_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    inviter_id INTEGER,
+                    invited_id INTEGER UNIQUE,
+                    invite_code_used TEXT,
+                    bonus_amount INTEGER,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    FOREIGN KEY (inviter_id) REFERENCES users (user_id) ON DELETE CASCADE,
+                    FOREIGN KEY (invited_id) REFERENCES users (user_id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # جدول سجل الأخطاء
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS error_logs (
+                    error_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    error_type TEXT,
+                    error_message TEXT,
+                    error_details TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
+                )
+            ''')
+            
+            # جدول الإحصائيات
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS statistics (
+                    stat_date DATE PRIMARY KEY,
+                    total_users INTEGER DEFAULT 0,
+                    new_users INTEGER DEFAULT 0,
+                    active_users INTEGER DEFAULT 0,
+                    total_transactions INTEGER DEFAULT 0,
+                    transaction_amount INTEGER DEFAULT 0,
+                    service_usage_count INTEGER DEFAULT 0,
+                    materials_downloaded INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # إضافة الفهارس لتحسين الأداء
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_invite_code ON users(invite_code)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_materials_category ON educational_materials(category)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_materials_stage ON educational_materials(stage)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)')
+            
+            # إضافة الإعدادات الافتراضية
+            self.add_default_settings()
+            self.add_default_service_prices()
+            
+            self.connection.commit()
+            logger.info("✅ تم تهيئة قاعدة البيانات بنجاح")
+    
+    def add_default_settings(self):
+        """إضافة الإعدادات الافتراضية للبوت"""
         default_settings = [
-            ('maintenance', '0'),
-            ('invite_bonus', '500'),
-            ('channel_link', 'https://t.me/+channel'),
-            ('support_username', '@Allawi04')
+            ('bot_name', BOT_NAME, 'اسم البوت'),
+            ('bot_username', BOT_USERNAME, 'يوزر البوت'),
+            ('admin_user_id', str(ADMIN_USER_ID), 'أيدي المشرف الرئيسي'),
+            ('admin_username', ADMIN_USERNAME, 'يوزر المشرف'),
+            ('welcome_bonus', str(WELCOME_BONUS_AMOUNT), 'مكافأة الترحيب'),
+            ('invite_bonus', '500', 'مكافأة دعوة صديق'),
+            ('min_service_price', str(MINIMUM_SERVICE_PRICE), 'أقل سعر للخدمة'),
+            ('currency_name', CURRENCY_NAME, 'اسم العملة'),
+            ('currency_symbol', CURRENCY_SYMBOL, 'رمز العملة'),
+            ('maintenance_mode', '0', 'وضع الصيانة (0=معطل, 1=مفعل)'),
+            ('broadcast_enabled', '1', 'تفعيل البث'),
+            ('auto_backup', '1', 'النسخ الاحتياطي التلقائي'),
+            ('support_channel', 'https://t.me/+channel', 'رابط القناة الرسمية'),
+            ('support_group', 'https://t.me/+group', 'رابط مجموعة الدعم'),
+            ('payment_methods', 'دعم فني', 'طرق الدفع المتاحة'),
+            ('terms_url', 'https://example.com/terms', 'رابط الشروط والأحكام'),
+            ('privacy_url', 'https://example.com/privacy', 'رابط سياسة الخصوصية'),
+            ('max_file_size', str(MAX_FILE_SIZE), 'الحجم الأقصى للملف'),
+            ('daily_limit', '10', 'الحد اليومي للاستخدام'),
+            ('language', 'ar', 'اللغة الافتراضية'),
+            ('timezone', 'Asia/Baghdad', 'المنطقة الزمنية')
         ]
         
-        for key, value in default_settings:
-            self.cursor.execute(
-                'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
-                (key, value)
-            )
+        for key, value, description in default_settings:
+            self.cursor.execute('''
+                INSERT OR IGNORE INTO bot_settings (setting_key, setting_value, description)
+                VALUES (?, ?, ?)
+            ''', (key, value, description))
         
-        self.conn.commit()
+        self.connection.commit()
+    
+    def add_default_service_prices(self):
+        """إضافة أسعار الخدمات الافتراضية"""
+        default_services = [
+            ('عفوية', 'exemption_calc', 1000, 1000, 500, 5000, 'حساب درجة العفوية'),
+            ('تلخيص', 'pdf_summary', 1000, 1000, 500, 5000, 'تلخيص الملازم بالذكاء الاصطناعي'),
+            ('أسئلة', 'qa_ai', 1000, 1000, 500, 5000, 'أسئلة وأجوبة بالذكاء الاصطناعي'),
+            ('ملازم', 'materials', 1000, 1000, 500, 5000, 'ملازمي ومرشحاتي'),
+            ('ترجمة', 'translation', 500, 500, 200, 2000, 'ترجمة النصوص'),
+            ('تحويل', 'conversion', 300, 300, 100, 1000, 'تحويل الملفات'),
+            ('شرح', 'explanation', 1500, 1500, 800, 8000, 'شرح الدروس')
+        ]
+        
+        for name, code, base_price, current_price, min_price, max_price, description in default_services:
+            self.cursor.execute('''
+                INSERT OR IGNORE INTO service_prices 
+                (service_name, service_code, base_price, current_price, min_price, max_price, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (name, code, base_price, current_price, min_price, max_price, description))
+        
+        self.connection.commit()
+    
+    def start_backup_scheduler(self):
+        """بدء جدولة النسخ الاحتياطي التلقائي"""
+        def backup_job():
+            while True:
+                time.sleep(BACKUP_INTERVAL)
+                self.create_backup()
+        
+        backup_thread = threading.Thread(target=backup_job, daemon=True)
+        backup_thread.start()
+        logger.info("✅ تم تشغيل نظام النسخ الاحتياطي التلقائي")
+    
+    def create_backup(self):
+        """إنشاء نسخة احتياطية من قاعدة البيانات"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = "database_backups"
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            backup_file = os.path.join(backup_dir, f"backup_{timestamp}.db")
+            
+            # إنشاء نسخة من قاعدة البيانات
+            with sqlite3.connect(backup_file) as backup_conn:
+                self.connection.backup(backup_conn)
+            
+            # الاحتفاظ فقط بـ 7 نسخ احتياطية
+            backups = sorted(Path(backup_dir).glob("backup_*.db"))
+            if len(backups) > 7:
+                for old_backup in backups[:-7]:
+                    old_backup.unlink()
+            
+            logger.info(f"✅ تم إنشاء نسخة احتياطية: {backup_file}")
+            return backup_file
+        except Exception as e:
+            logger.error(f"❌ فشل في إنشاء نسخة احتياطية: {e}")
+            return None
     
     # ============ إدارة المستخدمين ============
-    def add_user(self, user_id, username, first_name, last_name):
+    
+    def add_user(self, user_id: int, username: str = None, first_name: str = None, 
+                 last_name: str = None, language_code: str = 'ar') -> dict:
         """إضافة مستخدم جديد"""
-        invite_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        
-        self.cursor.execute('''
-            INSERT OR IGNORE INTO users 
-            (user_id, username, first_name, last_name, balance, invite_code)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, username, first_name, last_name, WELCOME_BONUS, invite_code))
-        
-        # تسجيل عملية المكافأة الترحيبية
-        if self.cursor.rowcount > 0:
-            self.add_transaction(user_id, WELCOME_BONUS, 'welcome_bonus', 'مكافأة ترحيبية')
-        
-        self.conn.commit()
-        return invite_code
+        with self.lock:
+            try:
+                # إنشاء كود دعوة فريد
+                invite_code = self.generate_invite_code()
+                
+                # إضافة المستخدم
+                self.cursor.execute('''
+                    INSERT OR IGNORE INTO users 
+                    (user_id, username, first_name, last_name, language_code, invite_code, balance)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (user_id, username, first_name, last_name, language_code, invite_code, WELCOME_BONUS_AMOUNT))
+                
+                if self.cursor.rowcount > 0:
+                    # تسجيل المكافأة الترحيبية
+                    self.add_transaction(
+                        user_id=user_id,
+                        amount=WELCOME_BONUS_AMOUNT,
+                        transaction_type='welcome_bonus',
+                        description='مكافأة ترحيبية'
+                    )
+                    
+                    # تحديث الإحصائيات
+                    self.update_statistics('new_users', increment=1)
+                    
+                    logger.info(f"✅ تم إضافة مستخدم جديد: {user_id}")
+                
+                return self.get_user(user_id)
+            except Exception as e:
+                logger.error(f"❌ فشل في إضافة مستخدم: {e}")
+                self.log_error(user_id, 'add_user', str(e))
+                return None
     
-    def get_user(self, user_id):
+    def get_user(self, user_id: int) -> dict:
         """الحصول على بيانات مستخدم"""
-        self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-        user = self.cursor.fetchone()
-        
-        if user:
-            columns = [description[0] for description in self.cursor.description]
-            return dict(zip(columns, user))
-        return None
+        with self.lock:
+            self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+            user = self.cursor.fetchone()
+            return dict(user) if user else None
     
-    def update_balance(self, user_id, amount):
+    def update_user(self, user_id: int, **kwargs) -> bool:
+        """تحديث بيانات مستخدم"""
+        with self.lock:
+            try:
+                if not kwargs:
+                    return False
+                
+                set_clause = ', '.join([f"{key} = ?" for key in kwargs.keys()])
+                values = list(kwargs.values()) + [user_id]
+                
+                query = f"UPDATE users SET {set_clause} WHERE user_id = ?"
+                self.cursor.execute(query, values)
+                
+                self.connection.commit()
+                return self.cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث المستخدم: {e}")
+                return False
+    
+    def update_balance(self, user_id: int, amount: int, transaction_type: str, description: str = "") -> bool:
         """تحديث رصيد المستخدم"""
-        self.cursor.execute(
-            'UPDATE users SET balance = balance + ? WHERE user_id = ?',
-            (amount, user_id)
-        )
-        self.conn.commit()
-        return self.cursor.rowcount > 0
+        with self.lock:
+            try:
+                # تحديث الرصيد
+                if amount > 0:
+                    self.cursor.execute(
+                        'UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE user_id = ?',
+                        (amount, amount, user_id)
+                    )
+                else:
+                    self.cursor.execute(
+                        'UPDATE users SET balance = balance + ?, total_spent = total_spent + ABS(?) WHERE user_id = ?',
+                        (amount, amount, user_id)
+                    )
+                
+                # إضافة العملية
+                self.add_transaction(user_id, amount, transaction_type, description)
+                
+                self.connection.commit()
+                return True
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث الرصيد: {e}")
+                return False
     
-    def get_balance(self, user_id):
+    def get_balance(self, user_id: int) -> int:
         """الحصول على رصيد المستخدم"""
-        self.cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
-        result = self.cursor.fetchone()
-        return result[0] if result else 0
+        with self.lock:
+            self.cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
+            result = self.cursor.fetchone()
+            return result[0] if result else 0
     
-    def get_all_users(self):
-        """الحصول على جميع المستخدمين"""
-        self.cursor.execute('SELECT * FROM users ORDER BY join_date DESC')
-        columns = [description[0] for description in self.cursor.description]
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
+    def get_all_users(self, limit: int = 100, offset: int = 0, filters: dict = None) -> list:
+        """الحصول على جميع المستخدمين مع فلترة"""
+        with self.lock:
+            query = "SELECT * FROM users WHERE 1=1"
+            params = []
+            
+            if filters:
+                if 'is_banned' in filters:
+                    query += " AND is_banned = ?"
+                    params.append(filters['is_banned'])
+                
+                if 'is_premium' in filters:
+                    query += " AND is_premium = ?"
+                    params.append(filters['is_premium'])
+                
+                if 'min_balance' in filters:
+                    query += " AND balance >= ?"
+                    params.append(filters['min_balance'])
+            
+            query += " ORDER BY join_date DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            self.cursor.execute(query, params)
+            users = self.cursor.fetchall()
+            return [dict(user) for user in users]
     
-    def ban_user(self, user_id):
+    def search_users(self, search_term: str) -> list:
+        """بحث عن مستخدمين"""
+        with self.lock:
+            search_term = f"%{search_term}%"
+            self.cursor.execute('''
+                SELECT * FROM users 
+                WHERE user_id LIKE ? OR username LIKE ? OR first_name LIKE ? OR last_name LIKE ?
+                LIMIT 50
+            ''', (search_term, search_term, search_term, search_term))
+            
+            users = self.cursor.fetchall()
+            return [dict(user) for user in users]
+    
+    def ban_user(self, user_id: int, reason: str = "انتهاك القواعد") -> bool:
         """حظر مستخدم"""
-        self.cursor.execute(
-            'UPDATE users SET banned = 1 WHERE user_id = ?',
-            (user_id,)
-        )
-        self.conn.commit()
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    UPDATE users SET is_banned = 1, ban_reason = ? WHERE user_id = ?
+                ''', (reason, user_id))
+                
+                self.connection.commit()
+                
+                if self.cursor.rowcount > 0:
+                    logger.info(f"🚫 تم حظر المستخدم: {user_id}")
+                    return True
+                return False
+            except Exception as e:
+                logger.error(f"❌ فشل في حظر المستخدم: {e}")
+                return False
     
-    def unban_user(self, user_id):
+    def unban_user(self, user_id: int) -> bool:
         """إلغاء حظر مستخدم"""
-        self.cursor.execute(
-            'UPDATE users SET banned = 0 WHERE user_id = ?',
-            (user_id,)
-        )
-        self.conn.commit()
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    UPDATE users SET is_banned = 0, ban_reason = NULL WHERE user_id = ?
+                ''', (user_id,))
+                
+                self.connection.commit()
+                
+                if self.cursor.rowcount > 0:
+                    logger.info(f"✅ تم إلغاء حظر المستخدم: {user_id}")
+                    return True
+                return False
+            except Exception as e:
+                logger.error(f"❌ فشل في إلغاء حظر المستخدم: {e}")
+                return False
     
-    # ============ إدارة العمليات ============
-    def add_transaction(self, user_id, amount, trans_type, description):
+    # ============ إدارة العمليات المالية ============
+    
+    def add_transaction(self, user_id: int, amount: int, transaction_type: str, 
+                       description: str = "", reference_id: str = None) -> int:
         """إضافة عملية مالية"""
-        self.cursor.execute('''
-            INSERT INTO transactions (user_id, amount, type, description)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, amount, trans_type, description))
-        self.conn.commit()
+        with self.lock:
+            try:
+                reference_id = reference_id or self.generate_reference_id()
+                
+                self.cursor.execute('''
+                    INSERT INTO transactions 
+                    (user_id, amount, transaction_type, description, reference_id)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (user_id, amount, transaction_type, description, reference_id))
+                
+                transaction_id = self.cursor.lastrowid
+                self.connection.commit()
+                
+                # تحديث الإحصائيات
+                if transaction_type != 'internal':
+                    self.update_statistics('total_transactions', increment=1)
+                    self.update_statistics('transaction_amount', increment=amount)
+                
+                return transaction_id
+            except Exception as e:
+                logger.error(f"❌ فشل في إضافة عملية: {e}")
+                self.log_error(user_id, 'add_transaction', str(e))
+                return None
     
-    def get_user_transactions(self, user_id, limit=10):
-        """الحصول على عمليات مستخدم"""
-        self.cursor.execute('''
-            SELECT * FROM transactions 
-            WHERE user_id = ? 
-            ORDER BY date DESC 
-            LIMIT ?
-        ''', (user_id, limit))
-        
-        columns = [description[0] for description in self.cursor.description]
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
+    def get_transactions(self, user_id: int = None, limit: int = 50, offset: int = 0) -> list:
+        """الحصول على العمليات المالية"""
+        with self.lock:
+            if user_id:
+                self.cursor.execute('''
+                    SELECT * FROM transactions 
+                    WHERE user_id = ? 
+                    ORDER BY created_at DESC 
+                    LIMIT ? OFFSET ?
+                ''', (user_id, limit, offset))
+            else:
+                self.cursor.execute('''
+                    SELECT * FROM transactions 
+                    ORDER BY created_at DESC 
+                    LIMIT ? OFFSET ?
+                ''', (limit, offset))
+            
+            transactions = self.cursor.fetchall()
+            return [dict(t) for t in transactions]
+    
+    def get_daily_stats(self, date: datetime = None) -> dict:
+        """الحصول على إحصائيات يومية"""
+        with self.lock:
+            date = date or datetime.now()
+            date_str = date.strftime('%Y-%m-%d')
+            
+            stats = {
+                'date': date_str,
+                'total_users': 0,
+                'new_users': 0,
+                'active_users': 0,
+                'total_transactions': 0,
+                'transaction_amount': 0,
+                'service_usage': 0,
+                'materials_downloaded': 0
+            }
+            
+            # إحصائيات المستخدمين
+            self.cursor.execute('SELECT COUNT(*) FROM users WHERE DATE(join_date) = ?', (date_str,))
+            stats['new_users'] = self.cursor.fetchone()[0]
+            
+            self.cursor.execute('SELECT COUNT(*) FROM users WHERE DATE(last_active) = ?', (date_str,))
+            stats['active_users'] = self.cursor.fetchone()[0]
+            
+            # إحصائيات العمليات
+            self.cursor.execute('''
+                SELECT COUNT(*), COALESCE(SUM(amount), 0) 
+                FROM transactions 
+                WHERE DATE(created_at) = ? AND transaction_type != 'internal'
+            ''', (date_str,))
+            result = self.cursor.fetchone()
+            stats['total_transactions'] = result[0]
+            stats['transaction_amount'] = result[1]
+            
+            # إحصائيات الخدمات
+            self.cursor.execute('SELECT COUNT(*) FROM service_usage WHERE DATE(created_at) = ?', (date_str,))
+            stats['service_usage'] = self.cursor.fetchone()[0]
+            
+            return stats
     
     # ============ إدارة الخدمات ============
-    def add_service_usage(self, user_id, service_type, cost):
+    
+    def add_service_usage(self, user_id: int, service_name: str, service_type: str, 
+                         cost: int, details: str = "") -> int:
         """تسجيل استخدام خدمة"""
-        self.cursor.execute('''
-            INSERT INTO services (user_id, service_type, cost)
-            VALUES (?, ?, ?)
-        ''', (user_id, service_type, cost))
-        self.conn.commit()
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    INSERT INTO service_usage 
+                    (user_id, service_name, service_type, cost, details)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (user_id, service_name, service_type, cost, details))
+                
+                usage_id = self.cursor.lastrowid
+                self.connection.commit()
+                
+                # تحديث الإحصائيات
+                self.update_statistics('service_usage_count', increment=1)
+                
+                return usage_id
+            except Exception as e:
+                logger.error(f"❌ فشل في تسجيل استخدام الخدمة: {e}")
+                self.log_error(user_id, 'add_service_usage', str(e))
+                return None
     
-    def get_service_stats(self):
-        """إحصائيات الخدمات"""
-        self.cursor.execute('''
-            SELECT service_type, COUNT(*) as count, SUM(cost) as total 
-            FROM services 
-            GROUP BY service_type
-        ''')
-        
-        columns = [description[0] for description in self.cursor.description]
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
+    def get_service_stats(self, period: str = 'daily') -> dict:
+        """الحصول على إحصائيات الخدمات"""
+        with self.lock:
+            stats = {}
+            
+            if period == 'daily':
+                self.cursor.execute('''
+                    SELECT service_name, COUNT(*) as count, SUM(cost) as revenue
+                    FROM service_usage 
+                    WHERE DATE(created_at) = DATE('now')
+                    GROUP BY service_name
+                    ORDER BY count DESC
+                ''')
+            elif period == 'weekly':
+                self.cursor.execute('''
+                    SELECT service_name, COUNT(*) as count, SUM(cost) as revenue
+                    FROM service_usage 
+                    WHERE created_at >= DATE('now', '-7 days')
+                    GROUP BY service_name
+                    ORDER BY count DESC
+                ''')
+            else:  # الشهري
+                self.cursor.execute('''
+                    SELECT service_name, COUNT(*) as count, SUM(cost) as revenue
+                    FROM service_usage 
+                    WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+                    GROUP BY service_name
+                    ORDER BY count DESC
+                ''')
+            
+            results = self.cursor.fetchall()
+            
+            for row in results:
+                stats[row['service_name']] = {
+                    'count': row['count'],
+                    'revenue': row['revenue'],
+                    'average_price': row['revenue'] / row['count'] if row['count'] > 0 else 0
+                }
+            
+            return stats
     
-    # ============ إدارة المواد ============
-    def add_material(self, name, description, file_id, stage, added_by):
+    def get_service_price(self, service_code: str) -> int:
+        """الحصول على سعر الخدمة"""
+        with self.lock:
+            self.cursor.execute('SELECT current_price FROM service_prices WHERE service_code = ?', (service_code,))
+            result = self.cursor.fetchone()
+            return result[0] if result else MINIMUM_SERVICE_PRICE
+    
+    def update_service_price(self, service_code: str, new_price: int) -> bool:
+        """تحديث سعر الخدمة"""
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    UPDATE service_prices 
+                    SET current_price = ?, updated_at = CURRENT_TIMESTAMP 
+                    WHERE service_code = ? AND ? BETWEEN min_price AND max_price
+                ''', (new_price, service_code, new_price))
+                
+                self.connection.commit()
+                return self.cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث سعر الخدمة: {e}")
+                return False
+    
+    # ============ إدارة المواد التعليمية ============
+    
+    def add_material(self, title: str, description: str, file_id: str, file_type: str,
+                    category: str, stage: str, uploaded_by: int, **kwargs) -> int:
         """إضافة مادة تعليمية"""
-        self.cursor.execute('''
-            INSERT INTO materials (name, description, file_id, stage, added_by)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (name, description, file_id, stage, added_by))
-        self.conn.commit()
-        return self.cursor.lastrowid
+        with self.lock:
+            try:
+                tags = kwargs.get('tags', '')
+                metadata = json.dumps(kwargs.get('metadata', {}))
+                
+                self.cursor.execute('''
+                    INSERT INTO educational_materials 
+                    (title, description, file_id, file_type, category, stage, 
+                     uploaded_by, tags, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (title, description, file_id, file_type, category, stage, 
+                      uploaded_by, tags, metadata))
+                
+                material_id = self.cursor.lastrowid
+                self.connection.commit()
+                
+                logger.info(f"📚 تم إضافة مادة جديدة: {title}")
+                return material_id
+            except Exception as e:
+                logger.error(f"❌ فشل في إضافة مادة: {e}")
+                self.log_error(uploaded_by, 'add_material', str(e))
+                return None
     
-    def get_materials(self, stage=None):
-        """الحصول على المواد التعليمية"""
-        if stage:
-            self.cursor.execute(
-                'SELECT * FROM materials WHERE stage = ? ORDER BY added_date DESC',
-                (stage,)
-            )
-        else:
-            self.cursor.execute('SELECT * FROM materials ORDER BY added_date DESC')
-        
-        columns = [description[0] for description in self.cursor.description]
-        return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
+    def get_materials(self, filters: dict = None, limit: int = 20, offset: int = 0) -> list:
+        """الحصول على المواد التعليمية مع فلترة"""
+        with self.lock:
+            query = "SELECT * FROM educational_materials WHERE is_approved = 1"
+            params = []
+            
+            if filters:
+                if 'category' in filters:
+                    query += " AND category = ?"
+                    params.append(filters['category'])
+                
+                if 'stage' in filters:
+                    query += " AND stage = ?"
+                    params.append(filters['stage'])
+                
+                if 'subject' in filters:
+                    query += " AND subject = ?"
+                    params.append(filters['subject'])
+                
+                if 'search' in filters:
+                    query += " AND (title LIKE ? OR description LIKE ? OR tags LIKE ?)"
+                    search_term = f"%{filters['search']}%"
+                    params.extend([search_term, search_term, search_term])
+                
+                if 'uploaded_by' in filters:
+                    query += " AND uploaded_by = ?"
+                    params.append(filters['uploaded_by'])
+            
+            query += " ORDER BY upload_date DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            self.cursor.execute(query, params)
+            materials = self.cursor.fetchall()
+            return [dict(m) for m in materials]
     
-    def delete_material(self, material_id):
+    def increment_download_count(self, material_id: int) -> bool:
+        """زيادة عداد التنزيلات للمادة"""
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    UPDATE educational_materials 
+                    SET download_count = download_count + 1 
+                    WHERE material_id = ?
+                ''', (material_id,))
+                
+                self.connection.commit()
+                
+                # تحديث الإحصائيات
+                self.update_statistics('materials_downloaded', increment=1)
+                
+                return self.cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث عداد التنزيلات: {e}")
+                return False
+    
+    def delete_material(self, material_id: int) -> bool:
         """حذف مادة تعليمية"""
-        self.cursor.execute('DELETE FROM materials WHERE id = ?', (material_id,))
-        self.conn.commit()
-        return self.cursor.rowcount > 0
+        with self.lock:
+            try:
+                self.cursor.execute('DELETE FROM educational_materials WHERE material_id = ?', (material_id,))
+                self.connection.commit()
+                return self.cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"❌ فشل في حذف المادة: {e}")
+                return False
+    
+    # ============ إدارة الإشعارات ============
+    
+    def add_notification(self, user_id: int, notification_type: str, 
+                        title: str, message: str) -> int:
+        """إضافة إشعار للمستخدم"""
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    INSERT INTO notifications 
+                    (user_id, notification_type, title, message)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, notification_type, title, message))
+                
+                notification_id = self.cursor.lastrowid
+                self.connection.commit()
+                
+                return notification_id
+            except Exception as e:
+                logger.error(f"❌ فشل في إضافة إشعار: {e}")
+                return None
+    
+    def get_unread_notifications(self, user_id: int, limit: int = 10) -> list:
+        """الحصول على الإشعارات غير المقروءة"""
+        with self.lock:
+            self.cursor.execute('''
+                SELECT * FROM notifications 
+                WHERE user_id = ? AND is_read = 0 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            ''', (user_id, limit))
+            
+            notifications = self.cursor.fetchall()
+            return [dict(n) for n in notifications]
+    
+    def mark_as_read(self, notification_id: int) -> bool:
+        """تحديد إشعار كمقروء"""
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    UPDATE notifications 
+                    SET is_read = 1, read_at = CURRENT_TIMESTAMP 
+                    WHERE notification_id = ?
+                ''', (notification_id,))
+                
+                self.connection.commit()
+                return self.cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث حالة الإشعار: {e}")
+                return False
+    
+    # ============ إدارة الإحالات ============
+    
+    def add_referral(self, inviter_id: int, invited_id: int, invite_code: str) -> int:
+        """إضافة إحالة جديدة"""
+        with self.lock:
+            try:
+                # التحقق من عدم تكرار الإحالة
+                self.cursor.execute('SELECT * FROM referrals WHERE invited_id = ?', (invited_id,))
+                if self.cursor.fetchone():
+                    return None
+                
+                # الحصول على مكافأة الدعوة
+                invite_bonus = self.get_setting('invite_bonus')
+                bonus_amount = int(invite_bonus) if invite_bonus else 500
+                
+                # إضافة الإحالة
+                self.cursor.execute('''
+                    INSERT INTO referrals 
+                    (inviter_id, invited_id, invite_code_used, bonus_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (inviter_id, invited_id, invite_code, bonus_amount))
+                
+                referral_id = self.cursor.lastrowid
+                
+                # تحديث عداد الإحالات للمدعو
+                self.cursor.execute('''
+                    UPDATE users 
+                    SET referral_count = referral_count + 1 
+                    WHERE user_id = ?
+                ''', (inviter_id,))
+                
+                self.connection.commit()
+                
+                logger.info(f"👥 تم إضافة إحالة جديدة: {inviter_id} -> {invited_id}")
+                return referral_id
+            except Exception as e:
+                logger.error(f"❌ فشل في إضافة إحالة: {e}")
+                return None
+    
+    def complete_referral(self, invited_id: int) -> bool:
+        """إكمال عملية الإحالة"""
+        with self.lock:
+            try:
+                # العثور على الإحالة
+                self.cursor.execute('''
+                    SELECT * FROM referrals 
+                    WHERE invited_id = ? AND status = 'pending'
+                ''', (invited_id,))
+                
+                referral = self.cursor.fetchone()
+                if not referral:
+                    return False
+                
+                # تحديث حالة الإحالة
+                self.cursor.execute('''
+                    UPDATE referrals 
+                    SET status = 'completed', completed_at = CURRENT_TIMESTAMP 
+                    WHERE referral_id = ?
+                ''', (referral['referral_id'],))
+                
+                # منح المكافأة للمدعو
+                self.update_balance(
+                    user_id=invited_id,
+                    amount=referral['bonus_amount'],
+                    transaction_type='referral_bonus',
+                    description=f'مكافأة دعوة من {referral["inviter_id"]}'
+                )
+                
+                # منح المكافأة للمدعو إليه
+                self.update_balance(
+                    user_id=referral['inviter_id'],
+                    amount=referral['bonus_amount'],
+                    transaction_type='referral_bonus',
+                    description=f'مكافأة لدعوة {invited_id}'
+                )
+                
+                self.connection.commit()
+                return True
+            except Exception as e:
+                logger.error(f"❌ فشل في إكمال الإحالة: {e}")
+                return False
     
     # ============ إدارة الإعدادات ============
-    def get_setting(self, key):
+    
+    def get_setting(self, key: str) -> str:
         """الحصول على إعداد"""
-        self.cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
-        result = self.cursor.fetchone()
-        return result[0] if result else None
+        with self.lock:
+            self.cursor.execute('SELECT setting_value FROM bot_settings WHERE setting_key = ?', (key,))
+            result = self.cursor.fetchone()
+            return result[0] if result else None
     
-    def update_setting(self, key, value):
+    def update_setting(self, key: str, value: str, updated_by: int = None) -> bool:
         """تحديث إعداد"""
-        self.cursor.execute('''
-            INSERT OR REPLACE INTO settings (key, value)
-            VALUES (?, ?)
-        ''', (key, value))
-        self.conn.commit()
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    UPDATE bot_settings 
+                    SET setting_value = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+                    WHERE setting_key = ?
+                ''', (value, updated_by, key))
+                
+                self.connection.commit()
+                return self.cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث الإعداد: {e}")
+                return False
     
-    def get_service_price(self, service_type):
-        """الحصول على سعر الخدمة"""
-        price = self.get_setting(f'price_{service_type}')
-        return int(price) if price else SERVICE_PRICES.get(service_type, MIN_SERVICE_PRICE)
+    def get_all_settings(self) -> dict:
+        """الحصول على جميع الإعدادات"""
+        with self.lock:
+            self.cursor.execute('SELECT setting_key, setting_value FROM bot_settings')
+            settings = self.cursor.fetchall()
+            return {s['setting_key']: s['setting_value'] for s in settings}
     
-    def update_service_price(self, service_type, price):
-        """تحديث سعر الخدمة"""
-        self.update_setting(f'price_{service_type}', str(price))
+    # ============ إدارة الأخطاء ============
     
-    def get_invite_bonus(self):
-        """الحصول على مكافأة الدعوة"""
-        bonus = self.get_setting('invite_bonus')
-        return int(bonus) if bonus else 500
+    def log_error(self, user_id: int = None, error_type: str = None, 
+                 error_message: str = None, error_details: str = None) -> int:
+        """تسجيل خطأ"""
+        with self.lock:
+            try:
+                self.cursor.execute('''
+                    INSERT INTO error_logs 
+                    (user_id, error_type, error_message, error_details)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, error_type, error_message, error_details))
+                
+                error_id = self.cursor.lastrowid
+                self.connection.commit()
+                
+                return error_id
+            except Exception as e:
+                logger.error(f"❌ فشل في تسجيل الخطأ: {e}")
+                return None
     
-    def update_invite_bonus(self, bonus):
-        """تحديث مكافأة الدعوة"""
-        self.update_setting('invite_bonus', str(bonus))
+    # ============ إدارة الإحصائيات ============
     
-    def get_maintenance_mode(self):
-        """الحصول على حالة الصيانة"""
-        mode = self.get_setting('maintenance')
-        return mode == '1'
+    def update_statistics(self, stat_type: str, increment: int = 1) -> bool:
+        """تحديث الإحصائيات"""
+        with self.lock:
+            try:
+                today = datetime.now().strftime('%Y-%m-%d')
+                
+                # التحقق من وجود إحصائية لهذا اليوم
+                self.cursor.execute('SELECT * FROM statistics WHERE stat_date = ?', (today,))
+                if not self.cursor.fetchone():
+                    # إنشاء إحصائية جديدة لهذا اليوم
+                    self.cursor.execute('''
+                        INSERT INTO statistics (stat_date)
+                        VALUES (?)
+                    ''', (today,))
+                
+                # تحديث الإحصائية
+                if hasattr(self, f'update_{stat_type}'):
+                    getattr(self, f'update_{stat_type}')(today, increment)
+                else:
+                    # تحديث عام
+                    self.cursor.execute(f'''
+                        UPDATE statistics 
+                        SET {stat_type} = {stat_type} + ? 
+                        WHERE stat_date = ?
+                    ''', (increment, today))
+                
+                self.connection.commit()
+                return True
+            except Exception as e:
+                logger.error(f"❌ فشل في تحديث الإحصائيات: {e}")
+                return False
     
-    def set_maintenance_mode(self, enabled):
-        """تحديث حالة الصيانة"""
-        self.update_setting('maintenance', '1' if enabled else '0')
+    # ============ أدوات مساعدة ============
+    
+    def generate_invite_code(self, length: int = 8) -> str:
+        """إنشاء كود دعوة فريد"""
+        while True:
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+            
+            # التحقق من عدم تكرار الكود
+            self.cursor.execute('SELECT COUNT(*) FROM users WHERE invite_code = ?', (code,))
+            if self.cursor.fetchone()[0] == 0:
+                return code
+    
+    def generate_reference_id(self, length: int = 12) -> str:
+        """إنشاء رقم مرجعي فريد"""
+        timestamp = int(time.time())
+        random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        return f"REF{timestamp}{random_part}"
+    
+    def get_user_count(self) -> int:
+        """الحصول على عدد المستخدمين"""
+        with self.lock:
+            self.cursor.execute('SELECT COUNT(*) FROM users')
+            return self.cursor.fetchone()[0]
+    
+    def get_active_users_count(self, days: int = 7) -> int:
+        """الحصول على عدد المستخدمين النشطين"""
+        with self.lock:
+            self.cursor.execute('''
+                SELECT COUNT(DISTINCT user_id) 
+                FROM service_usage 
+                WHERE created_at >= DATE('now', ?)
+            ''', (f'-{days} days',))
+            return self.cursor.fetchone()[0]
+    
+    def get_total_revenue(self, period: str = 'monthly') -> int:
+        """الحصول على إجمالي الإيرادات"""
+        with self.lock:
+            if period == 'daily':
+                self.cursor.execute('''
+                    SELECT COALESCE(SUM(cost), 0) 
+                    FROM service_usage 
+                    WHERE DATE(created_at) = DATE('now')
+                ''')
+            elif period == 'weekly':
+                self.cursor.execute('''
+                    SELECT COALESCE(SUM(cost), 0) 
+                    FROM service_usage 
+                    WHERE created_at >= DATE('now', '-7 days')
+                ''')
+            else:  # الشهري
+                self.cursor.execute('''
+                    SELECT COALESCE(SUM(cost), 0) 
+                    FROM service_usage 
+                    WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+                ''')
+            
+            return self.cursor.fetchone()[0]
     
     def close(self):
         """إغلاق اتصال قاعدة البيانات"""
-        self.conn.close()
+        if self.connection:
+            self.connection.close()
+            logger.info("🔒 تم إغلاق قاعدة البيانات")
 
 # إنشاء كائن قاعدة البيانات
-db = Database()
+db = AdvancedDatabase()
+
+# ============================================
+# نظام الذكاء الاصطناعي
+# ============================================
+
+class AISystem:
+    """نظام الذكاء الاصطناعي المتكامل"""
+    
+    def __init__(self, api_key: str = GEMINI_API_KEY):
+        self.api_key = api_key
+        self.model = None
+        self.chat_sessions = {}
+        self.init_ai()
+    
+    def init_ai(self):
+        """تهيئة نظام الذكاء الاصطناعي"""
+        try:
+            genai.configure(api_key=self.api_key)
+            
+            # إنشاء نموذج الذكاء الاصطناعي
+            generation_config = {
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": 2048,
+                "response_mime_type": "text/plain",
+            }
+            
+            safety_settings = [
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
+                },
+                {
+                    "category": "HARM_CATEGORY_HATE_SPEECH",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
+                },
+                {
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
+                },
+                {
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE",
+                },
+            ]
+            
+            self.model = genai.GenerativeModel(
+                model_name="gemini-1.5-pro",
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
+            
+            logger.info("✅ تم تهيئة نظام الذكاء الاصطناعي بنجاح")
+            return True
+        except Exception as e:
+            logger.error(f"❌ فشل في تهيئة الذكاء الاصطناعي: {e}")
+            return False
+    
+    async def summarize_pdf(self, pdf_path: str, user_id: int) -> dict:
+        """تلخيص ملف PDF باستخدام الذكاء الاصطناعي"""
+        try:
+            # قراءة ملف PDF
+            text_content = ""
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PdfReader(file)
+                total_pages = len(pdf_reader.pages)
+                
+                for page_num in range(min(total_pages, 50)):  # حد أقصى 50 صفحة
+                    page = pdf_reader.pages[page_num]
+                    text_content += page.extract_text() + "\n\n"
+            
+            if not text_content.strip():
+                return {
+                    'success': False,
+                    'error': 'لا يمكن قراءة النص من ملف PDF'
+                }
+            
+            # تقليل حجم النص إذا كان كبيراً
+            if len(text_content) > 15000:
+                text_content = text_content[:15000] + "..."
+            
+            # إنشاء تلميح للتلخيص
+            prompt = f"""
+            أنت معلم عراقي متخصص في المناهج التعليمية.
+            قم بتلخيص النص التعليمي التالي بأسلوب أكاديمي مع التركيز على:
+            
+            1. النقاط الرئيسية والأفكار الأساسية
+            2. التعريفات والمصطلحات المهمة
+            3. القوانين والمعادلات الرياضية
+            4. الاستنتاجات والتوصيات
+            
+            المطلوب:
+            - التلخيص باللغة العربية الفصحى
+            - تقسيم المحتوى إلى أقسام واضحة
+            - استخدام العناوين الرئيسية والفرعية
+            - تضمين الأمثلة التوضيحية إن وجدت
+            - كتابة النقاط المهمة بشكل مرتب
+            
+            النص المراد تلخيصه:
+            {text_content}
+            
+            قدم التلخيص بشكل منظم ومنسق مع مراعاة التسلسل المنطقي.
+            """
+            
+            # استخدام الذكاء الاصطناعي للتلخيص
+            response = await self.generate_text(prompt)
+            
+            if not response['success']:
+                return response
+            
+            return {
+                'success': True,
+                'summary': response['text'],
+                'original_length': len(text_content),
+                'summary_length': len(response['text'])
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في تلخيص PDF: {e}")
+            return {
+                'success': False,
+                'error': f'خطأ في معالجة الملف: {str(e)}'
+            }
+    
+    async def answer_question(self, question: str, context: str = "", user_id: int = None) -> dict:
+        """الإجابة على الأسئلة باستخدام الذكاء الاصطناعي"""
+        try:
+            # إنشاء تلميح للإجابة
+            prompt = f"""
+            أنت مساعد تعليمي ذكي للطلاب العراقيين.
+            مهمتك الإجابة على الأسئلة التعليمية بدقة وبشكل مفصل.
+            
+            توجيهات:
+            1. أجب باللغة العربية الفصحى
+            2. ركز على المنهج العراقي إن أمكن
+            3. قدم إجابة شاملة ومفصلة
+            4. رتب الإجابة بشكل منطقي
+            5. استخدم الأمثلة التوضيحية
+            6. اذكر المصادر إن كنت تعرفها
+            
+            السؤال: {question}
+            
+            {f'السياق: {context}' if context else ''}
+            
+            قدم الإجابة بشكل منظم مع العناوين الفرعية إذا لزم الأمر.
+            """
+            
+            # استخدام الذكاء الاصطناعي للإجابة
+            response = await self.generate_text(prompt)
+            
+            if not response['success']:
+                return response
+            
+            # تحسين تنسيق الإجابة
+            formatted_answer = self.format_answer(response['text'])
+            
+            return {
+                'success': True,
+                'answer': formatted_answer,
+                'sources': [],
+                'confidence': 0.85
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في الإجابة على السؤال: {e}")
+            return {
+                'success': False,
+                'error': f'خطأ في معالجة السؤال: {str(e)}'
+            }
+    
+    async def analyze_image_question(self, image_path: str, question: str = None) -> dict:
+        """تحليل صورة تحتوي على سؤال"""
+        try:
+            # قراءة الصورة
+            image = Image.open(image_path)
+            
+            # استخدام OCR لاستخراج النص
+            text = pytesseract.image_to_string(image, lang='ara+eng')
+            
+            if not text.strip():
+                return {
+                    'success': False,
+                    'error': 'لا يمكن قراءة النص من الصورة'
+                }
+            
+            # استخدام الذكاء الاصطناعي للإجابة
+            prompt = f"""
+            هذا نص تم استخراجه من صورة لسؤال تعليمي:
+            
+            النص: {text}
+            
+            {'السؤال الإضافي: ' + question if question else ''}
+            
+            قم بتحليل النص والإجابة على السؤال بشكل تعليمي دقيق.
+            """
+            
+            response = await self.generate_text(prompt)
+            
+            if not response['success']:
+                return response
+            
+            return {
+                'success': True,
+                'extracted_text': text,
+                'answer': response['text']
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في تحليل صورة السؤال: {e}")
+            return {
+                'success': False,
+                'error': f'خطأ في معالجة الصورة: {str(e)}'
+            }
+    
+    async def generate_text(self, prompt: str, max_retries: int = 3) -> dict:
+        """إنشاء نص باستخدام الذكاء الاصطناعي"""
+        for attempt in range(max_retries):
+            try:
+                if not self.model:
+                    self.init_ai()
+                    if not self.model:
+                        return {
+                            'success': False,
+                            'error': 'نظام الذكاء الاصطناعي غير متاح'
+                        }
+                
+                # إنشاء المحتوى
+                response = self.model.generate_content(prompt)
+                
+                if not response or not response.text:
+                    return {
+                        'success': False,
+                        'error': 'لا توجد استجابة من الذكاء الاصطناعي'
+                    }
+                
+                return {
+                    'success': True,
+                    'text': response.text,
+                    'model': 'gemini-1.5-pro',
+                    'attempt': attempt + 1
+                }
+                
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"❌ فشل في إنشاء النص بعد {max_retries} محاولات: {e}")
+                    return {
+                        'success': False,
+                        'error': f'فشل في الاتصال بالذكاء الاصطناعي: {str(e)}'
+                    }
+                
+                await asyncio.sleep(1)  # انتظار قبل إعادة المحاولة
+    
+    def format_answer(self, answer: str) -> str:
+        """تنسيق الإجابة بشكل جميل"""
+        # إضافة تنسيقات تحسين العرض
+        formatted = answer.strip()
+        
+        # إضافة فواصل بين الأقسام
+        formatted = re.sub(r'\n\s*\n\s*\n+', '\n\n', formatted)
+        
+        # تحسين العناوين
+        formatted = re.sub(r'^(#+\s*.+)$', r'🔹 \1', formatted, flags=re.MULTILINE)
+        
+        # إضافة تنسيق للنقاط
+        formatted = re.sub(r'^\d+[\.\)]\s*', '• ', formatted, flags=re.MULTILINE)
+        
+        return formatted
+    
+    def get_chat_session(self, user_id: int):
+        """الحصول على جلسة محادثة للمستخدم"""
+        if user_id not in self.chat_sessions:
+            self.chat_sessions[user_id] = self.model.start_chat(history=[])
+        
+        return self.chat_sessions[user_id]
+
+# إنشاء كائن الذكاء الاصطناعي
+ai_system = AISystem()
+
+# ============================================
+# نظام ملفات PDF المتقدم
+# ============================================
+
+class PDFSystem:
+    """نظام معالجة وإنشاء ملفات PDF"""
+    
+    def __init__(self):
+        self.setup_fonts()
+        self.temp_dir = TEMP_DIR
+        os.makedirs(self.temp_dir, exist_ok=True)
+    
+    def setup_fonts(self):
+        """إعداد الخطوط العربية والإنجليزية"""
+        try:
+            # محاولة تسجيل خطوط عربية (يجب تثبيتها على النظام)
+            font_paths = [
+                '/usr/share/fonts/truetype/arabic/arial.ttf',
+                '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+                '/System/Library/Fonts/Supplemental/Arial.ttf',
+                'C:/Windows/Fonts/arial.ttf'
+            ]
+            
+            arabic_font_found = False
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    try:
+                        pdfmetrics.registerFont(TTFont('Arabic', font_path))
+                        arabic_font_found = True
+                        logger.info(f"✅ تم تسجيل الخط العربي: {font_path}")
+                        break
+                    except:
+                        continue
+            
+            if not arabic_font_found:
+                # استخدام خط افتراضي
+                pdfmetrics.registerFont(TTFont('Arabic', 'Helvetica'))
+                logger.warning("⚠️ استخدام خط افتراضي للعربية")
+            
+            # تسجيل خط إنجليزي
+            pdfmetrics.registerFont(TTFont('English', 'Helvetica'))
+            
+            return True
+        except Exception as e:
+            logger.error(f"❌ خطأ في إعداد الخطوط: {e}")
+            return False
+    
+    def create_summary_pdf(self, summary_text: str, original_filename: str, 
+                          user_id: int, metadata: dict = None) -> str:
+        """إنشاء ملف PDF مخرص"""
+        try:
+            # إنشاء اسم ملف فريد
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = re.sub(r'[^\w\-_]', '', original_filename.replace('.pdf', ''))
+            output_filename = f"ملخص_{safe_filename}_{timestamp}.pdf"
+            output_path = os.path.join(self.temp_dir, output_filename)
+            
+            # إعداد أنماط النص
+            styles = getSampleStyleSheet()
+            
+            # أنماط مخصصة للعربية
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontName='Arabic',
+                fontSize=16,
+                textColor=colors.HexColor('#2C3E50'),
+                spaceAfter=20,
+                alignment=TA_CENTER
+            )
+            
+            subtitle_style = ParagraphStyle(
+                'CustomSubtitle',
+                parent=styles['Heading2'],
+                fontName='Arabic',
+                fontSize=14,
+                textColor=colors.HexColor('#34495E'),
+                spaceAfter=15,
+                alignment=TA_RIGHT
+            )
+            
+            arabic_style = ParagraphStyle(
+                'ArabicText',
+                parent=styles['Normal'],
+                fontName='Arabic',
+                fontSize=12,
+                textColor=colors.HexColor('#2C3E50'),
+                spaceAfter=10,
+                alignment=TA_RIGHT,
+                leading=18
+            )
+            
+            footer_style = ParagraphStyle(
+                'Footer',
+                parent=styles['Normal'],
+                fontName='Arabic',
+                fontSize=10,
+                textColor=colors.HexColor('#7F8C8D'),
+                alignment=TA_CENTER
+            )
+            
+            # إنشاء مستند PDF
+            doc = SimpleDocTemplate(
+                output_path,
+                pagesize=A4,
+                rightMargin=50,
+                leftMargin=50,
+                topMargin=50,
+                bottomMargin=50,
+                title=f"ملخص: {original_filename}"
+            )
+            
+            # بناء محتوى PDF
+            story = []
+            
+            # العنوان الرئيسي
+            title_text = f"<b>📚 ملخص: {original_filename}</b>"
+            story.append(Paragraph(format_arabic_text(title_text), title_style))
+            story.append(Spacer(1, 10))
+            
+            # معلومات المستند
+            info_text = f"""
+            <b>تاريخ التلخيص:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/>
+            <b>أداة التلخيص:</b> بوت {BOT_NAME}<br/>
+            <b>التقنية المستخدمة:</b> الذكاء الاصطناعي المتقدم<br/>
+            <b>رقم المرجع:</b> REF{timestamp}{user_id}
+            """
+            story.append(Paragraph(format_arabic_text(info_text), subtitle_style))
+            story.append(Spacer(1, 30))
+            
+            # المحتوى المخرص
+            content_title = "<b>📝 المحتوى المخرص:</b>"
+            story.append(Paragraph(format_arabic_text(content_title), subtitle_style))
+            story.append(Spacer(1, 10))
+            
+            # تقسيم النص إلى فقرات
+            paragraphs = summary_text.split('\n\n')
+            for para in paragraphs:
+                if para.strip():
+                    # تحسين تنسيق الفقرات
+                    formatted_para = para.strip()
+                    
+                    # إضافة تنسيق للعناوين الفرعية
+                    if formatted_para.startswith('###'):
+                        formatted_para = formatted_para.replace('###', '').strip()
+                        story.append(Paragraph(f"<b>🔸 {format_arabic_text(formatted_para)}</b>", subtitle_style))
+                    elif formatted_para.startswith('##'):
+                        formatted_para = formatted_para.replace('##', '').strip()
+                        story.append(Paragraph(f"<b>🔹 {format_arabic_text(formatted_para)}</b>", subtitle_style))
+                    elif formatted_para.startswith('#'):
+                        formatted_para = formatted_para.replace('#', '').strip()
+                        story.append(Paragraph(f"<b>📌 {format_arabic_text(formatted_para)}</b>", subtitle_style))
+                    else:
+                        story.append(Paragraph(format_arabic_text(formatted_para), arabic_style))
+                    
+                    story.append(Spacer(1, 8))
+            
+            # إضافة فواصل بين الأقسام
+            story.append(PageBreak())
+            
+            # قسم المعلومات الإضافية
+            if metadata:
+                metadata_title = "<b>📊 معلومات إضافية:</b>"
+                story.append(Paragraph(format_arabic_text(metadata_title), subtitle_style))
+                story.append(Spacer(1, 15))
+                
+                metadata_items = []
+                for key, value in metadata.items():
+                    if value:
+                        metadata_items.append([
+                            Paragraph(format_arabic_text(str(key)), arabic_style),
+                            Paragraph(format_arabic_text(str(value)), arabic_style)
+                        ])
+                
+                if metadata_items:
+                    metadata_table = Table(metadata_items, colWidths=[100, 300])
+                    metadata_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ECF0F1')),
+                        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
+                        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+                        ('FONTNAME', (0, 0), (-1, -1), 'Arabic'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                        ('TOPPADDING', (0, 0), (-1, -1), 6),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BDC3C7'))
+                    ]))
+                    story.append(metadata_table)
+            
+            story.append(Spacer(1, 40))
+            
+            # تذييل الصفحة
+            footer_text = f"""
+            <i>تم إنشاء هذا الملخص تلقائياً بواسطة بوت {BOT_NAME}<br/>
+            للاستفسارات والدعم: {db.get_setting('support_username') or ADMIN_USERNAME}<br/>
+            جميع الحقوق محفوظة © {datetime.now().year}</i>
+            """
+            story.append(Paragraph(format_arabic_text(footer_text), footer_style))
+            
+            # بناء ملف PDF
+            doc.build(story)
+            
+            logger.info(f"✅ تم إنشاء ملف PDF: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في إنشاء PDF: {e}")
+            return None
+    
+    def extract_text_from_pdf(self, pdf_path: str) -> str:
+        """استخراج النص من ملف PDF"""
+        try:
+            text_content = ""
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PdfReader(file)
+                total_pages = len(pdf_reader.pages)
+                
+                for page_num in range(total_pages):
+                    page = pdf_reader.pages[page_num]
+                    text_content += page.extract_text() + "\n\n"
+            
+            return text_content.strip()
+        except Exception as e:
+            logger.error(f"❌ خطأ في استخراج النص من PDF: {e}")
+            return ""
+    
+    def create_simple_pdf(self, content: str, filename: str = "document.pdf") -> str:
+        """إنشاء ملف PDF بسيط"""
+        try:
+            output_path = os.path.join(self.temp_dir, filename)
+            
+            doc = SimpleDocTemplate(
+                output_path,
+                pagesize=A4,
+                rightMargin=50,
+                leftMargin=50,
+                topMargin=50,
+                bottomMargin=50
+            )
+            
+            styles = getSampleStyleSheet()
+            arabic_style = ParagraphStyle(
+                'SimpleArabic',
+                parent=styles['Normal'],
+                fontName='Arabic',
+                fontSize=12,
+                alignment=TA_RIGHT
+            )
+            
+            story = []
+            story.append(Paragraph(format_arabic_text(content), arabic_style))
+            
+            doc.build(story)
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في إنشاء PDF بسيط: {e}")
+            return None
+    
+    def cleanup_temp_files(self, hours_old: int = 24):
+        """تنظيف الملفات المؤقتة القديمة"""
+        try:
+            cutoff_time = time.time() - (hours_old * 3600)
+            
+            for filename in os.listdir(self.temp_dir):
+                file_path = os.path.join(self.temp_dir, filename)
+                if os.path.isfile(file_path):
+                    if os.path.getctime(file_path) < cutoff_time:
+                        os.remove(file_path)
+                        logger.debug(f"🗑️ تم حذف الملف المؤقت: {filename}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"❌ خطأ في تنظيف الملفات المؤقتة: {e}")
+            return False
+
+# إنشاء كائن نظام PDF
+pdf_system = PDFSystem()
 
 # ============================================
 # أدوات مساعدة
 # ============================================
+
+def format_arabic_text(text: str) -> str:
+    """تنسيق النص العربي للعرض"""
+    try:
+        if not text:
+            return ""
+        
+        # إعادة تشكيل النص العربي
+        reshaped_text = arabic_reshaper.reshape(text)
+        
+        # معالجة النص ثنائي الاتجاه
+        bidi_text = get_display(reshaped_text)
+        
+        return bidi_text
+    except Exception as e:
+        logger.warning(f"⚠️ خطأ في تنسيق النص العربي: {e}")
+        return text
+
+def format_number(number: int) -> str:
+    """تنسيق الأرقام بفواصل"""
+    try:
+        return f"{number:,}"
+    except:
+        return str(number)
+
+def format_currency(amount: int) -> str:
+    """تنسيق المبالغ المالية"""
+    return f"{format_number(amount)} {CURRENCY_SYMBOL}"
+
+def format_date(date_str: str, format_type: str = "full") -> str:
+    """تنسيق التواريخ"""
+    try:
+        if isinstance(date_str, str):
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        else:
+            dt = date_str
+        
+        if format_type == "full":
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        elif format_type == "date":
+            return dt.strftime("%Y-%m-%d")
+        elif format_type == "time":
+            return dt.strftime("%H:%M")
+        elif format_type == "relative":
+            now = datetime.now()
+            diff = now - dt
+            
+            if diff.days > 365:
+                return f"قبل {diff.days // 365} سنة"
+            elif diff.days > 30:
+                return f"قبل {diff.days // 30} شهر"
+            elif diff.days > 0:
+                return f"قبل {diff.days} يوم"
+            elif diff.seconds > 3600:
+                return f"قبل {diff.seconds // 3600} ساعة"
+            elif diff.seconds > 60:
+                return f"قبل {diff.seconds // 60} دقيقة"
+            else:
+                return "الآن"
+        else:
+            return str(dt)
+    except Exception as e:
+        logger.warning(f"⚠️ خطأ في تنسيق التاريخ: {e}")
+        return date_str
+
+def is_admin(user_id: int) -> bool:
+    """التحقق إذا كان المستخدم مشرفاً"""
+    return user_id == ADMIN_USER_ID
 
 def admin_only(func):
     """ديكوراتور للتحقق من صلاحيات المشرف"""
@@ -429,37 +1816,56 @@ def admin_only(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
         
-        if user_id != ADMIN_ID:
-            await update.message.reply_text(
-                "⛔️ هذا الأمر مخصص للمشرفين فقط!",
-                reply_markup=main_menu_keyboard()
-            )
+        if not is_admin(user_id):
+            if update.callback_query:
+                await update.callback_query.answer("⛔ هذا الأمر للمشرفين فقط!", show_alert=True)
+            else:
+                await update.message.reply_text(
+                    "⛔ هذا الأمر للمشرفين فقط!",
+                    reply_markup=main_menu_keyboard(user_id)
+                )
             return
         
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-def check_balance(price):
-    """ديكوراتور للتحقق من الرصيد"""
+def check_balance(service_code: str):
+    """ديكوراتور للتحقق من رصيد المستخدم"""
     def decorator(func):
         @wraps(func)
         async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
             user_id = update.effective_user.id
+            
+            # التحقق إذا كان المشرف
+            if is_admin(user_id):
+                return await func(update, context, *args, **kwargs)
+            
+            # الحصول على سعر الخدمة
+            service_price = db.get_service_price(service_code)
+            
+            # الحصول على رصيد المستخدم
             user_balance = db.get_balance(user_id)
             
-            if user_balance < price:
+            if user_balance < service_price:
                 await update.message.reply_text(
-                    f"💰 رصيدك غير كاف!\n"
-                    f"سعر الخدمة: {price} {CURRENCY}\n"
-                    f"رصيدك الحالي: {user_balance} {CURRENCY}\n\n"
-                    f"لشحن الرصيد تواصل مع الدعم الفني: {ADMIN_USERNAME}",
-                    reply_markup=main_menu_keyboard()
+                    format_arabic_text(f"""
+                    ⚠️ **رصيدك غير كاف!**
+                    
+                    **سعر الخدمة:** {format_currency(service_price)}
+                    **رصيدك الحالي:** {format_currency(user_balance)}
+                    **النقص:** {format_currency(service_price - user_balance)}
+                    
+                    📥 **لشحن الرصيد:**
+                    1. تواصل مع الدعم الفني: {db.get_setting('support_username') or ADMIN_USERNAME}
+                    2. أو استخدم رابط الدعوة لدعوة أصدقاء
+                    
+                    💰 **رابط الدعوة الخاص بك:**
+                    `https://t.me/{BOT_USERNAME.replace("@", "")}?start={db.get_user(user_id)['invite_code']}`
+                    """),
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=main_menu_keyboard(user_id)
                 )
                 return
-            
-            # خصم المبلغ
-            db.update_balance(user_id, -price)
-            db.add_transaction(user_id, -price, 'service_payment', f'دفع مقابل خدمة: {func.__name__}')
             
             return await func(update, context, *args, **kwargs)
         return wrapper
@@ -469,266 +1875,443 @@ def check_maintenance(func):
     """ديكوراتور للتحقق من وضع الصيانة"""
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        if db.get_maintenance_mode() and update.effective_user.id != ADMIN_ID:
+        user_id = update.effective_user.id
+        
+        # المشرف يمكنه استخدام البوت دائماً
+        if is_admin(user_id):
+            return await func(update, context, *args, **kwargs)
+        
+        # التحقق من وضع الصيانة
+        maintenance_mode = db.get_setting('maintenance_mode')
+        if maintenance_mode == '1':
             await update.message.reply_text(
-                "🔧 البوت قيد الصيانة حالياً...\n"
-                "نأسف للإزعاج، سنعود قريباً!",
-                reply_markup=main_menu_keyboard()
+                format_arabic_text("""
+                🔧 **البوت قيد الصيانة حالياً**
+                
+                نعمل على تحسين الخدمة وتطويرها.
+                سنعود قريباً بخدمات أفضل!
+                
+                **⏰ الوقت المقدر:** 1-2 ساعة
+                **📞 للاستفسارات:** {support}
+                """.format(support=db.get_setting('support_username') or ADMIN_USERNAME)),
+                reply_markup=ReplyKeyboardRemove()
             )
             return
         
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-def format_arabic_text(text):
-    """تنسيق النص العربي للعرض"""
-    try:
-        reshaped_text = arabic_reshaper.reshape(text)
-        bidi_text = get_display(reshaped_text)
-        return bidi_text
-    except:
-        return text
+def log_activity(activity_type: str):
+    """ديكوراتور لتسجيل نشاط المستخدم"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            user_id = update.effective_user.id
+            
+            # تحديث وقت النشاط الأخير
+            db.update_user(user_id, last_active=datetime.now().isoformat())
+            
+            # تسجيل النشاط
+            logger.info(f"📝 نشاط: {activity_type} - المستخدم: {user_id}")
+            
+            return await func(update, context, *args, **kwargs)
+        return wrapper
+    return decorator
 
 # ============================================
 # لوحات المفاتيح
 # ============================================
 
-def main_menu_keyboard():
+def main_menu_keyboard(user_id: int = None) -> ReplyKeyboardMarkup:
     """لوحة المفاتيح الرئيسية"""
     keyboard = [
-        ["📊 حساب درجة العفوية"],
-        ["📄 تلخيص الملازم بالذكاء الاصطناعي"],
-        ["❓ أسئلة وأجوبة بالذكاء الاصطناعي"],
-        ["📚 ملازمي ومرشحاتي"],
+        ["📊 حساب درجة العفوية", "📄 تلخيص الملازم"],
+        ["❓ أسئلة وأجوبة", "📚 ملازمي ومرشحاتي"],
         ["💰 رصيدي", "📤 دعوة أصدقاء"],
-        ["ℹ️ معلومات", "👨‍💻 الدعم الفني"]
+        ["ℹ️ معلومات البوت", "👨‍💻 الدعم الفني"]
     ]
     
-    # إضافة زر لوحة التحكم للمشرف فقط
-    if threading.current_thread() == threading.main_thread():
-        # في التطبيق الفعلي سيتم التحقق من خلال context
-        pass
+    # إضافة زر لوحة التحكم للمشرف
+    if user_id and is_admin(user_id):
+        keyboard.append(["👑 لوحة التحكم"])
     
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, selective=True)
 
-def admin_keyboard():
-    """لوحة مفاتيح المشرف"""
+def admin_panel_keyboard() -> ReplyKeyboardMarkup:
+    """لوحة مفاتيح لوحة التحكم"""
     keyboard = [
-        ["📊 إحصائيات", "👥 إدارة المستخدمين"],
-        ["💰 شحن رصيد", "⚙️ تغيير الأسعار"],
-        ["📚 إدارة المواد", "🎁 إعدادات الدعوة"],
-        ["🔧 وضع الصيانة", "📢 إرسال إشعار"],
-        ["🏠 العودة للقائمة الرئيسية"]
+        ["📊 الإحصائيات", "👥 إدارة المستخدمين"],
+        ["💰 الشحن والإيرادات", "⚙️ إعدادات الخدمات"],
+        ["📚 إدارة المواد", "🎁 برنامج الدعوة"],
+        ["🔧 إعدادات البوت", "📢 البث للمستخدمين"],
+        ["🏠 القائمة الرئيسية"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def back_to_main_keyboard():
+def back_to_main_keyboard() -> ReplyKeyboardMarkup:
     """زر العودة للقائمة الرئيسية"""
-    return ReplyKeyboardMarkup([["🏠 العودة للقائمة الرئيسية"]], resize_keyboard=True)
+    return ReplyKeyboardMarkup([["🏠 القائمة الرئيسية"]], resize_keyboard=True)
 
-def stages_keyboard():
+def cancel_keyboard() -> ReplyKeyboardMarkup:
+    """زر الإلغاء"""
+    return ReplyKeyboardMarkup([["❌ إلغاء"]], resize_keyboard=True)
+
+def stages_keyboard() -> ReplyKeyboardMarkup:
     """لوحة مفاتيح المراحل الدراسية"""
     keyboard = [
         ["المرحلة الأولى", "المرحلة الثانية"],
         ["المرحلة الثالثة", "المرحلة الرابعة"],
-        ["🏠 العودة للقائمة الرئيسية"]
+        ["🏠 القائمة الرئيسية"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def confirmation_keyboard() -> ReplyKeyboardMarkup:
+    """لوحة مفاتيح التأكيد"""
+    keyboard = [
+        ["✅ نعم، متأكد", "❌ لا، إلغاء"],
+        ["🏠 القائمة الرئيسية"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def payment_methods_keyboard() -> ReplyKeyboardMarkup:
+    """لوحة مفاتيح طرق الدفع"""
+    keyboard = [
+        ["💳 شحن عبر الدعم", "👥 دعوة أصدقاء"],
+        ["🏠 القائمة الرئيسية"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # ============================================
-# معالجات الأوامر الرئيسية
+# معالجات الأوامر الأساسية
 # ============================================
 
 @check_maintenance
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء استخدام البوت"""
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج أمر /start"""
     user = update.effective_user
     user_id = user.id
     
-    # إضافة المستخدم إلى قاعدة البيانات
-    invite_code = db.add_user(
-        user_id, 
-        user.username, 
-        user.first_name, 
-        user.last_name
+    # إرسال رسالة الترحيب
+    welcome_text = format_arabic_text(f"""
+    🎓 **مرحباً بك في {BOT_NAME}!**
+    
+    **📚 البوت التعليمي الذكي للطلاب العراقيين**
+    
+    🎁 **مكافأة ترحيبية:** {format_currency(WELCOME_BONUS_AMOUNT)}
+    
+    **الخدمات المتاحة:**
+    
+    📊 **حساب درجة العفوية** - {format_currency(db.get_service_price('exemption_calc'))}
+    • حساب معدل الكورسات ومعرفة إذا كنت معفياً
+    
+    📄 **تلخيص الملازم بالذكاء الاصطناعي** - {format_currency(db.get_service_price('pdf_summary'))}
+    • تلخيص الكتب والملازم تلقائياً
+    
+    ❓ **أسئلة وأجوبة بالذكاء الاصطناعي** - {format_currency(db.get_service_price('qa_ai'))}
+    • الإجابة على أسئلتك التعليمية
+    
+    📚 **ملازمي ومرشحاتي** - {format_currency(db.get_service_price('materials'))}
+    • مكتبة المواد التعليمية
+    
+    💰 **الرصيد الحالي:** {format_currency(db.get_balance(user_id))}
+    
+    📤 **دعوة أصدقاء:** احصل على {format_currency(int(db.get_setting('invite_bonus') or 500))} لكل صديق!
+    
+    👨‍💻 **الدعم الفني:** {db.get_setting('support_username') or ADMIN_USERNAME}
+    """)
+    
+    # إضافة المستخدم إذا كان جديداً
+    user_data = db.add_user(
+        user_id=user_id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        language_code=user.language_code
     )
     
-    # التحقق إذا كان المستخدم مدعو
+    # التحقق من رابط الدعوة
     if context.args:
-        inviter_code = context.args[0]
-        # البحث عن المستخدم الذي دعا
-        db.cursor.execute('SELECT user_id FROM users WHERE invite_code = ?', (inviter_code,))
+        invite_code = context.args[0]
+        
+        # البحث عن صاحب كود الدعوة
+        db.cursor.execute('SELECT user_id FROM users WHERE invite_code = ?', (invite_code,))
         inviter = db.cursor.fetchone()
         
-        if inviter:
-            inviter_id = inviter[0]
-            bonus = db.get_invite_bonus()
+        if inviter and inviter['user_id'] != user_id:
+            # إضافة الإحالة
+            referral_id = db.add_referral(inviter['user_id'], user_id, invite_code)
             
-            # منح المكافأة للمدعو
-            db.update_balance(user_id, bonus)
-            db.add_transaction(user_id, bonus, 'invite_bonus', 'مكافأة دعوة صديق')
-            
-            # منح المكافأة للمدعو إليه
-            db.update_balance(inviter_id, bonus)
-            db.add_transaction(inviter_id, bonus, 'invite_bonus', 'مكافأة لدعوة صديق')
-            
-            # إرسال إشعار للمدعو إليه
-            try:
-                await context.bot.send_message(
-                    inviter_id,
-                    f"🎉 تم تسجيل صديقك عن طريق رابط دعوتك!\n"
-                    f"حصلت على {bonus} {CURRENCY} مكافأة!"
-                )
-            except:
-                pass
+            if referral_id:
+                # إكمال عملية الإحالة
+                db.complete_referral(user_id)
+                
+                # إرسال إشعار للمدعو إليه
+                try:
+                    inviter_balance = db.get_balance(inviter['user_id'])
+                    bonus = int(db.get_setting('invite_bonus') or 500)
+                    
+                    await context.bot.send_message(
+                        inviter['user_id'],
+                        format_arabic_text(f"""
+                        🎉 **تم تسجيل صديقك عن طريق رابط دعوتك!**
+                        
+                        👤 **الصديق:** {user.first_name or ''} {user.last_name or ''}
+                        💰 **المكافأة:** {format_currency(bonus)}
+                        💵 **رصيدك الجديد:** {format_currency(inviter_balance + bonus)}
+                        
+                        📊 **إجمالي الأصدقاء المدعوين:** {db.get_user(inviter['user_id'])['referral_count']}
+                        """),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except Exception as e:
+                    logger.error(f"❌ فشل في إرسال إشعار للمدعو إليه: {e}")
     
-    # رسالة الترحيب
-    welcome_text = f"""
-    🎓 أهلاً بك {user.first_name} في بوت {BOT_NAME}!
-
-    🎁 **مكافأة ترحيبية:** {WELCOME_BONUS} {CURRENCY}
-
-    **الخدمات المتاحة:**
-    1️⃣ حساب درجة العفوية - {db.get_service_price('عفوية')} {CURRENCY}
-    2️⃣ تلخيص الملازم بالذكاء الاصطناعي - {db.get_service_price('تلخيص')} {CURRENCY}
-    3️⃣ أسئلة وأجوبة بالذكاء الاصطناعي - {db.get_service_price('أسئلة')} {CURRENCY}
-    4️⃣ ملازمي ومرشحاتي - {db.get_service_price('ملازم')} {CURRENCY}
-
-    💰 **رصيدك الحالي:** {db.get_balance(user_id)} {CURRENCY}
-
-    📤 **دعوة أصدقاء:** احصل على {db.get_invite_bonus()} {CURRENCY} لكل صديق!
-    رابط دعوتك: https://t.me/{BOT_USERNAME.replace('@', '')}?start={invite_code}
-
-    👨‍💻 **الدعم الفني:** {db.get_setting('support_username') or ADMIN_USERNAME}
-    """
-    
+    # إرسال رسالة الترحيب
     await update.message.reply_text(
-        format_arabic_text(welcome_text),
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
+        welcome_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(user_id)
     )
+    
+    # تسجيل النشاط
+    logger.info(f"👋 مستخدم جديد: {user_id} - {user.username}")
 
 @check_maintenance
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@log_activity("balance_check")
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض رصيد المستخدم"""
     user_id = update.effective_user.id
     user_balance = db.get_balance(user_id)
+    user_data = db.get_user(user_id)
+    
+    # الحصول على الإحصائيات
+    total_earned = user_data.get('total_earned', 0)
+    total_spent = user_data.get('total_spent', 0)
     
     # الحصول على رابط الدعوة
-    db.cursor.execute('SELECT invite_code FROM users WHERE user_id = ?', (user_id,))
-    invite_code = db.cursor.fetchone()[0]
+    invite_code = user_data.get('invite_code', '')
     invite_link = f"https://t.me/{BOT_USERNAME.replace('@', '')}?start={invite_code}"
+    invite_bonus = int(db.get_setting('invite_bonus') or 500)
     
-    balance_text = f"""
-    💰 **رصيدك الحالي:** {user_balance} {CURRENCY}
-
-    📤 **دعوة أصدقاء:**
-    احصل على {db.get_invite_bonus()} {CURRENCY} لكل صديق يدخل عبر رابطك!
-
-    🔗 **رابط دعوتك:**
+    balance_text = format_arabic_text(f"""
+    💰 **الرصيد والعمليات المالية**
+    
+    **💵 الرصيد الحالي:** {format_currency(user_balance)}
+    
+    **📊 الإحصائيات:**
+    • إجمالي الإيداعات: {format_currency(total_earned)}
+    • إجمالي المصروفات: {format_currency(total_spent)}
+    • صافي الربح: {format_currency(total_earned - total_spent)}
+    
+    **📤 برنامج الدعوة:**
+    • مكافأة الدعوة: {format_currency(invite_bonus)}
+    • عدد الأصدقاء المدعوين: {user_data.get('referral_count', 0)}
+    • إجمالي مكافآت الدعوة: {format_currency(user_data.get('referral_count', 0) * invite_bonus)}
+    
+    **🔗 رابط دعوتك:**
     `{invite_link}`
-
-    💳 **لشحن الرصيد:**
-    تواصل مع الدعم الفني: {db.get_setting('support_username') or ADMIN_USERNAME}
-    """
+    
+    **💳 طرق شحن الرصيد:**
+    1. التواصل مع الدعم الفني: {db.get_setting('support_username') or ADMIN_USERNAME}
+    2. دعوة الأصدقاء عبر الرابط أعلاه
+    3. المكافآت والهدايا الدورية
+    
+    **📝 آخر 5 عمليات:**
+    """)
+    
+    # الحصول على آخر العمليات
+    transactions = db.get_transactions(user_id=user_id, limit=5)
+    
+    if transactions:
+        for i, trans in enumerate(transactions, 1):
+            amount = trans['amount']
+            amount_str = f"+{format_currency(amount)}" if amount > 0 else format_currency(amount)
+            
+            balance_text += f"\n{i}. {trans['description']}: {amount_str}"
+    else:
+        balance_text += "\n📭 لا توجد عمليات سابقة"
     
     await update.message.reply_text(
-        format_arabic_text(balance_text),
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
+        balance_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(user_id)
     )
 
 @check_maintenance
-async def invite_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معلومات الدعوة"""
+@log_activity("invite_info")
+async def invite_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معلومات برنامج الدعوة"""
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+    
+    invite_code = user_data.get('invite_code', '')
+    invite_link = f"https://t.me/{BOT_USERNAME.replace('@', '')}?start={invite_code}"
+    invite_bonus = int(db.get_setting('invite_bonus') or 500)
+    
+    # الحصول على الإحالات
+    db.cursor.execute('''
+        SELECT u.user_id, u.first_name, u.last_name, r.created_at 
+        FROM referrals r
+        JOIN users u ON r.invited_id = u.user_id
+        WHERE r.inviter_id = ? AND r.status = 'completed'
+        ORDER BY r.created_at DESC
+        LIMIT 10
+    ''', (user_id,))
+    
+    referrals = db.cursor.fetchall()
+    
+    invite_text = format_arabic_text(f"""
+    📤 **برنامج دعوة الأصدقاء**
+    
+    **🎁 المكافأة:** {format_currency(invite_bonus)} لكل صديق
+    **👥 عدد الأصدقاء المدعوين:** {user_data.get('referral_count', 0)}
+    **💰 إجمالي المكافآت:** {format_currency(user_data.get('referral_count', 0) * invite_bonus)}
+    
+    **🔗 رابط دعوتك:**
+    `{invite_link}`
+    
+    **📝 كيفية الاستخدام:**
+    1. أرسل الرابط لصديقك
+    2. ينقر صديقك على الرابط ويبدأ استخدام البوت
+    3. تحصل أنت وصديقك على المكافأة تلقائياً!
+    
+    **⚡ المميزات:**
+    • المكافأة فورية
+    • لا حد أقصى لعدد الأصدقاء
+    • يمكنك تتبع جميع دعواتك
+    • دعم جميع أنواع المستخدمين
+    
+    **📊 آخر الأصدقاء المدعوين:**
+    """)
+    
+    if referrals:
+        for i, referral in enumerate(referrals, 1):
+            name = f"{referral['first_name'] or ''} {referral['last_name'] or ''}".strip()
+            if not name:
+                name = f"المستخدم {referral['user_id']}"
+            
+            date = format_date(referral['created_at'], "relative")
+            invite_text += f"\n{i}. {name} - {date}"
+    else:
+        invite_text += "\n📭 لم تدعُ أي أصدقاء بعد"
+    
+    invite_text += f"""
+    
+    **📞 للاستفسارات:** {db.get_setting('support_username') or ADMIN_USERNAME}
+    """
+    
+    await update.message.reply_text(
+        invite_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(user_id)
+    )
+
+@check_maintenance
+@log_activity("info")
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معلومات عن البوت"""
     user_id = update.effective_user.id
     
-    # الحصول على رابط الدعوة
-    db.cursor.execute('SELECT invite_code FROM users WHERE user_id = ?', (user_id,))
-    invite_code = db.cursor.fetchone()[0]
-    invite_link = f"https://t.me/{BOT_USERNAME.replace('@', '')}?start={invite_code}"
+    # إحصائيات البوت
+    total_users = db.get_user_count()
+    active_users = db.get_active_users_count(days=7)
+    total_revenue = db.get_total_revenue('monthly')
     
-    # عدد الأشخاص الذين دعاهم
-    db.cursor.execute('SELECT COUNT(*) FROM users WHERE invited_by = ?', (user_id,))
-    invited_count = db.cursor.fetchone()[0]
+    info_text = format_arabic_text(f"""
+    ℹ️ **معلومات عن {BOT_NAME}**
     
-    invite_text = f"""
-    📤 **برنامج الدعوة:**
-
-    🎁 **المكافأة:** {db.get_invite_bonus()} {CURRENCY} لكل صديق
-
-    👥 **عدد الأصدقاء الذين دعيتهم:** {invited_count}
-
-    💰 **إجمالي المكافآت:** {invited_count * db.get_invite_bonus()} {CURRENCY}
-
-    🔗 **رابط دعوتك:**
-    `{invite_link}`
-
-    **طريقة الاستخدام:**
-    1. أرسل الرابط لصديقك
-    2. عندما ينقر عليه ويبدأ باستخدام البوت
-    3. تحصل أنت وصديقك على المكافأة تلقائياً!
-    """
+    **🤖 وصف البوت:**
+    بوت تعليمي ذكي مصمم خصيصاً للطلاب العراقيين، 
+    يوفر خدمات تعليمية متقدمة باستخدام الذكاء الاصطناعي.
+    
+    **📊 إحصائيات البوت:**
+    • إجمالي المستخدمين: {format_number(total_users)}
+    • المستخدمين النشطين (أسبوع): {format_number(active_users)}
+    • الإيرادات الشهرية: {format_currency(total_revenue)}
+    
+    **💎 المميزات:**
+    ✅ حساب درجة العفوية
+    ✅ تلخيص الملازم بالذكاء الاصطناعي
+    ✅ أسئلة وأجوبة ذكية
+    ✅ مكتبة المواد التعليمية
+    ✅ نظام الدعوة والمكافآت
+    ✅ دعم متعدد اللغات
+    
+    **🔧 التقنيات المستخدمة:**
+    • الذكاء الاصطناعي المتقدم (Gemini)
+    • معالجة اللغة الطبيعية
+    • معالجة ملفات PDF
+    • نظام قاعدة بيانات متكامل
+    
+    **📞 قنوات التواصل:**
+    • البوت الرسمي: {BOT_USERNAME}
+    • قناة البوت: {db.get_setting('support_channel') or 'غير متاح'}
+    • مجموعة الدعم: {db.get_setting('support_group') or 'غير متاح'}
+    • الدعم الفني: {db.get_setting('support_username') or ADMIN_USERNAME}
+    
+    **👑 فريق التطوير:**
+    • المطور الرئيسي: {ADMIN_USERNAME}
+    • أيدي المطور: {ADMIN_USER_ID}
+    
+    **📜 الشروط والأحكام:**
+    • شروط الاستخدام: {db.get_setting('terms_url') or 'غير متاح'}
+    • سياسة الخصوصية: {db.get_setting('privacy_url') or 'غير متاح'}
+    
+    **🔄 آخر تحديث:** {datetime.now().strftime('%Y-%m-%d')}
+    **⚙️ الإصدار:** 3.0.0
+    """)
     
     await update.message.reply_text(
-        format_arabic_text(invite_text),
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
+        info_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(user_id)
     )
 
 @check_maintenance
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معلومات البوت"""
-    total_users = len(db.get_all_users())
-    
-    info_text = f"""
-    ℹ️ **معلومات البوت:**
-
-    **اسم البوت:** {BOT_NAME}
-    **يوزر البوت:** {BOT_USERNAME}
-
-    **👥 عدد المستخدمين:** {total_users}
-    **💰 العملة:** {CURRENCY}
-
-    **📢 قناة البوت:** {db.get_setting('channel_link') or 'غير مضبوط'}
-    **👨‍💻 الدعم الفني:** {db.get_setting('support_username') or ADMIN_USERNAME}
-
-    **الخدمات المتاحة:**
-    1. حساب درجة العفوية
-    2. تلخيص الملازم بالذكاء الاصطناعي
-    3. أسئلة وأجوبة بالذكاء الاصطناعي
-    4. ملازمي ومرشحاتي
-
-    **المطور:** {ADMIN_USERNAME}
-    """
-    
-    await update.message.reply_text(
-        format_arabic_text(info_text),
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
-    )
-
-@check_maintenance
-async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@log_activity("support")
+async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """الاتصال بالدعم الفني"""
-    support_text = f"""
-    👨‍💻 **الدعم الفني:**
-
-    **يوزر الدعم:** {db.get_setting('support_username') or ADMIN_USERNAME}
-    **أيدي المطور:** {ADMIN_ID}
-
-    **طرق التواصل:**
-    1. مراسلة الدعم الفني مباشرة
-    2. للإبلاغ عن مشاكل في البوت
-    3. لشحن الرصيد والاستفسارات المالية
-    4. لاقتراح تحسينات جديدة
-
-    **⏰ وقت الاستجابة:** خلال 24 ساعة
-    """
+    user_id = update.effective_user.id
+    
+    support_text = format_arabic_text(f"""
+    👨‍💻 **الدعم الفني والاتصال**
+    
+    **📞 معلومات الاتصال:**
+    • يوزر الدعم: {db.get_setting('support_username') or ADMIN_USERNAME}
+    • أيدي المطور: `{ADMIN_USER_ID}`
+    
+    **⏰ ساعات العمل:**
+    • الأحد - الخميس: 9:00 صباحاً - 5:00 مساءً
+    • الجمعة - السبت: 10:00 صباحاً - 2:00 مساءً
+    • توقيت بغداد (UTC+3)
+    
+    **📋 خدمات الدعم:**
+    1. المساعدة الفنية في استخدام البوت
+    2. حل المشاكل والتقارير عن الأخطاء
+    3. استفسارات الدفع والشحن
+    4. اقتراحات التطوير والتحسين
+    5. الشكاوى والبلاغات
+    
+    **🚨 حالات الطوارئ:**
+    للقضايا العاجلة، يمكنك مراسلة المطور مباشرة.
+    
+    **📝 نصائح قبل التواصل:**
+    • تأكد من قراءة التعليمات أولاً
+    • احتفظ برقم المستخدم الخاص بك: `{user_id}`
+    • صف مشكلتك بشكل واضح ومفصل
+    • أرفض لقطات شاشة إذا أمكن
+    
+    **⏱️ وقت الاستجابة المتوقع:**
+    • خلال 24 ساعة للاستفسارات العادية
+    • خلال 2-4 ساعات للقضايا العاجلة
+    
+    **شكراً لثقتك بـ {BOT_NAME}!** 🤝
+    """)
     
     await update.message.reply_text(
-        format_arabic_text(support_text),
-        reply_markup=main_menu_keyboard()
+        support_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(user_id)
     )
 
 # ============================================
@@ -736,1239 +2319,1870 @@ async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 @check_maintenance
-@check_balance(db.get_service_price('عفوية'))
-async def calculate_exemption(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@check_balance('exemption_calc')
+@log_activity("exemption_calculation")
+async def exemption_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء عملية حساب درجة العفوية"""
     user_id = update.effective_user.id
     
-    # تسجيل استخدام الخدمة
-    db.add_service_usage(user_id, 'عفوية', db.get_service_price('عفوية'))
+    # التحقق من الرصيد
+    service_price = db.get_service_price('exemption_calc')
+    user_balance = db.get_balance(user_id)
     
+    if user_balance < service_price and not is_admin(user_id):
+        await update.message.reply_text(
+            format_arabic_text(f"""
+            ⚠️ **رصيدك غير كاف!**
+            
+            سعر الخدمة: {format_currency(service_price)}
+            رصيدك الحالي: {format_currency(user_balance)}
+            
+            الرجاء شحن رصيدك أولاً.
+            """),
+            reply_markup=main_menu_keyboard(user_id)
+        )
+        return
+    
+    # تسجيل استخدام الخدمة
+    db.add_service_usage(
+        user_id=user_id,
+        service_name='حساب درجة العفوية',
+        service_type='exemption_calc',
+        cost=service_price,
+        details='بدء عملية الحساب'
+    )
+    
+    # خصم المبلغ
+    if not is_admin(user_id):
+        db.update_balance(
+            user_id=user_id,
+            amount=-service_price,
+            transaction_type='service_payment',
+            description='حساب درجة العفوية'
+        )
+    
+    # بدء المحادثة
     await update.message.reply_text(
         format_arabic_text("""
         📊 **حساب درجة العفوية**
-
-        أدخل درجات الكورسات الثلاثة (كل درجة بين 0-100)
-
-        **شرط العفو:** المعدل ≥ 90
-
+        
+        **🎯 الشرط:** المعدل ≥ 90
+        
+        **📝 التعليمات:**
+        1. أدخل درجات الكورسات الثلاثة (0-100)
+        2. سيتم حساب المعدل تلقائياً
+        3. ستعرف إذا كنت معفياً أم لا
+        
         **أرسل درجة الكورس الأول:**
         """),
         reply_markup=back_to_main_keyboard()
     )
     
-    return COURSE1
+    # حفظ حالة المحادثة
+    context.user_data['exemption_stage'] = 'course1'
+    context.user_data['exemption_data'] = {}
+    
+    return 'WAITING_COURSE1'
 
-async def get_course1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على درجة الكورس الأول"""
+async def process_course1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة درجة الكورس الأول"""
+    user_id = update.effective_user.id
+    
     try:
-        grade1 = float(update.message.text)
+        grade = float(update.message.text.strip())
         
-        if 0 <= grade1 <= 100:
-            context.user_data['grade1'] = grade1
+        if 0 <= grade <= 100:
+            context.user_data['exemption_data']['course1'] = grade
             
             await update.message.reply_text(
-                format_arabic_text("✅ تم حفظ درجة الكورس الأول\n\nأرسل درجة الكورس الثاني:"),
+                format_arabic_text(f"""
+                ✅ **تم حفظ درجة الكورس الأول:** {grade:.2f}
+                
+                **أرسل درجة الكورس الثاني:**
+                """),
                 reply_markup=back_to_main_keyboard()
             )
-            return COURSE2
+            
+            context.user_data['exemption_stage'] = 'course2'
+            return 'WAITING_COURSE2'
         else:
             await update.message.reply_text(
-                format_arabic_text("⚠️ الرجاء إدخال درجة بين 0 و 100:"),
+                format_arabic_text("""
+                ⚠️ **درجة غير صحيحة!**
+                
+                الرجاء إدخال درجة بين 0 و 100:
+                """),
                 reply_markup=back_to_main_keyboard()
             )
-            return COURSE1
+            return 'WAITING_COURSE1'
+            
     except ValueError:
         await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إدخال رقم صحيح:"),
+            format_arabic_text("""
+            ⚠️ **قيمة غير صحيحة!**
+            
+            الرجاء إدخال رقم فقط (مثال: 85.5):
+            """),
             reply_markup=back_to_main_keyboard()
         )
-        return COURSE1
+        return 'WAITING_COURSE1'
 
-async def get_course2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على درجة الكورس الثاني"""
+async def process_course2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة درجة الكورس الثاني"""
     try:
-        grade2 = float(update.message.text)
+        grade = float(update.message.text.strip())
         
-        if 0 <= grade2 <= 100:
-            context.user_data['grade2'] = grade2
+        if 0 <= grade <= 100:
+            context.user_data['exemption_data']['course2'] = grade
             
             await update.message.reply_text(
-                format_arabic_text("✅ تم حفظ درجة الكورس الثاني\n\nأرسل درجة الكورس الثالث:"),
+                format_arabic_text(f"""
+                ✅ **تم حفظ درجة الكورس الثاني:** {grade:.2f}
+                
+                **أرسل درجة الكورس الثالث:**
+                """),
                 reply_markup=back_to_main_keyboard()
             )
-            return COURSE3
+            
+            context.user_data['exemption_stage'] = 'course3'
+            return 'WAITING_COURSE3'
         else:
             await update.message.reply_text(
-                format_arabic_text("⚠️ الرجاء إدخال درجة بين 0 و 100:"),
+                format_arabic_text("""
+                ⚠️ **درجة غير صحيحة!**
+                
+                الرجاء إدخال درجة بين 0 و 100:
+                """),
                 reply_markup=back_to_main_keyboard()
             )
-            return COURSE2
+            return 'WAITING_COURSE2'
+            
     except ValueError:
         await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إدخال رقم صحيح:"),
+            format_arabic_text("""
+            ⚠️ **قيمة غير صحيحة!**
+            
+            الرجاء إدخال رقم فقط (مثال: 90.0):
+            """),
             reply_markup=back_to_main_keyboard()
         )
-        return COURSE2
+        return 'WAITING_COURSE2'
 
-async def get_course3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على درجة الكورس الثالث وحساب المعدل"""
+async def process_course3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة درجة الكورس الثالث وحساب النتيجة"""
+    user_id = update.effective_user.id
+    
     try:
-        grade3 = float(update.message.text)
+        grade = float(update.message.text.strip())
         
-        if 0 <= grade3 <= 100:
-            grade1 = context.user_data.get('grade1', 0)
-            grade2 = context.user_data.get('grade2', 0)
+        if 0 <= grade <= 100:
+            # الحصول على جميع الدرجات
+            course1 = context.user_data['exemption_data']['course1']
+            course2 = context.user_data['exemption_data']['course2']
+            course3 = grade
             
             # حساب المعدل
-            average = (grade1 + grade2 + grade3) / 3
+            average = (course1 + course2 + course3) / 3
             
-            # التحقق من العفو
+            # تحديد النتيجة
             if average >= 90:
                 result = "🎉 **مبروك! أنت معفي من المادة** 🎉"
-                emoji = "✅"
+                result_emoji = "✅"
+                is_exempt = True
             else:
                 result = "❌ **للأسف، أنت غير معفي من المادة**"
-                emoji = "❌"
+                result_emoji = "❌"
+                is_exempt = False
             
-            result_text = f"""
-            {emoji} **نتيجة حساب درجة العفوية**
-
-            **الدرجات المدخلة:**
-            • الكورس الأول: {grade1:.2f}
-            • الكورس الثاني: {grade2:.2f}
-            • الكورس الثالث: {grade3:.2f}
-
-            **المعدل النهائي:** {average:.2f}
-
-            **النتيجة:** {result}
-
-            **ملاحظة:** الحد الأدنى للعفو هو 90
-            """
+            # حساب النسبة المئوية
+            percentage = (average / 100) * 100
             
+            # إنشاء نص النتيجة
+            result_text = format_arabic_text(f"""
+            {result_emoji} **نتيجة حساب درجة العفوية**
+            
+            **📊 الدرجات المدخلة:**
+            • الكورس الأول: {course1:.2f}
+            • الكورس الثاني: {course2:.2f}
+            • الكورس الثالث: {course3:.2f}
+            
+            **🧮 الحسابات:**
+            • مجموع الدرجات: {course1 + course2 + course3:.2f}
+            • المعدل النهائي: **{average:.2f}**
+            • النسبة المئوية: **{percentage:.1f}%**
+            
+            **📈 النتيجة:** {result}
+            
+            **📝 التوصيات:**
+            {f'• يمكنك التقدم بطلب الإعفاء' if is_exempt else '• تحتاج إلى تحسين درجاتك'}
+            {f'• المعدل المطلوب: 90 أو أعلى' if not is_exempt else '• احتفظ بنسخة من النتيجة'}
+            {f'• النقص: {90 - average:.2f} درجة' if not is_exempt else '• تهانينا على هذا الإنجاز!'}
+            
+            **🔄 ملاحظة:** الحد الأدنى للإعفاء هو 90 درجة
+            """)
+            
+            # إرسال النتيجة
             await update.message.reply_text(
-                format_arabic_text(result_text),
-                reply_markup=main_menu_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
+                result_text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=main_menu_keyboard(user_id)
             )
             
             # مسح البيانات المؤقتة
             context.user_data.clear()
             
             return ConversationHandler.END
+            
         else:
             await update.message.reply_text(
-                format_arabic_text("⚠️ الرجاء إدخال درجة بين 0 و 100:"),
+                format_arabic_text("""
+                ⚠️ **درجة غير صحيحة!**
+                
+                الرجاء إدخال درجة بين 0 و 100:
+                """),
                 reply_markup=back_to_main_keyboard()
             )
-            return COURSE3
+            return 'WAITING_COURSE3'
+            
     except ValueError:
         await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إدخال رقم صحيح:"),
+            format_arabic_text("""
+            ⚠️ **قيمة غير صحيحة!**
+            
+            الرجاء إدخال رقم فقط (مثال: 95.0):
+            """),
             reply_markup=back_to_main_keyboard()
         )
-        return COURSE3
+        return 'WAITING_COURSE3'
 
 # ============================================
 # الخدمة 2: تلخيص الملازم بالذكاء الاصطناعي
 # ============================================
 
 @check_maintenance
-@check_balance(db.get_service_price('تلخيص'))
-async def summarize_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@check_balance('pdf_summary')
+@log_activity("pdf_summary")
+async def pdf_summary_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء عملية تلخيص PDF"""
     user_id = update.effective_user.id
     
+    # التحقق من الرصيد
+    service_price = db.get_service_price('pdf_summary')
+    user_balance = db.get_balance(user_id)
+    
+    if user_balance < service_price and not is_admin(user_id):
+        await update.message.reply_text(
+            format_arabic_text(f"""
+            ⚠️ **رصيدك غير كاف!**
+            
+            سعر الخدمة: {format_currency(service_price)}
+            رصيدك الحالي: {format_currency(user_balance)}
+            
+            الرجاء شحن رصيدك أولاً.
+            """),
+            reply_markup=main_menu_keyboard(user_id)
+        )
+        return
+    
     # تسجيل استخدام الخدمة
-    db.add_service_usage(user_id, 'تلخيص', db.get_service_price('تلخيص'))
+    db.add_service_usage(
+        user_id=user_id,
+        service_name='تلخيص الملازم',
+        service_type='pdf_summary',
+        cost=service_price,
+        details='بدء عملية التلخيص'
+    )
+    
+    # خصم المبلغ
+    if not is_admin(user_id):
+        db.update_balance(
+            user_id=user_id,
+            amount=-service_price,
+            transaction_type='service_payment',
+            description='تلخيص الملازم'
+        )
     
     await update.message.reply_text(
         format_arabic_text("""
         📄 **تلخيص الملازم بالذكاء الاصطناعي**
-
-        **الخطوات:**
+        
+        **📝 التعليمات:**
         1. أرسل ملف PDF المراد تلخيصه
         2. انتظر قليلاً لمعالجة الملف
         3. ستحصل على ملف PDF مخرص
-
-        **ملاحظات:**
-        • يجب أن يكون الملف بصيغة PDF
-        • حجم الملف الأقصى: 20MB
-        • قد تستغرق العملية بضع دقائق
-
-        **أرسل ملف PDF الآن:**
+        
+        **⚡ المميزات:**
+        • تلخيص ذكي باستخدام الذكاء الاصطناعي
+        • حفظ الهيكل الأصلي للمستند
+        • التركيز على النقاط المهمة
+        • تنسيق احترافي وجاهز للطباعة
+        
+        **📦 المتطلبات:**
+        • الملف يجب أن يكون بصيغة PDF
+        • الحجم الأقصى: 20 ميجابايت
+        • يجب أن يحتوي على نص قابل للقراءة
+        
+        **⏳ الوقت المتوقع:** 1-3 دقائق
+        
+        **📤 أرسل ملف PDF الآن:**
         """),
         reply_markup=back_to_main_keyboard()
     )
     
-    return WAITING_PDF
+    return 'WAITING_PDF'
 
-async def process_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_pdf_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة ملف PDF"""
+    user_id = update.effective_user.id
+    
     if not update.message.document:
         await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إرسال ملف PDF:"),
+            format_arabic_text("""
+            ⚠️ **لم يتم إرسال ملف!**
+            
+            الرجاء إرسال ملف PDF:
+            """),
             reply_markup=back_to_main_keyboard()
         )
-        return WAITING_PDF
+        return 'WAITING_PDF'
     
     document = update.message.document
     
-    if not document.file_name.endswith('.pdf'):
+    # التحقق من نوع الملف
+    if not document.file_name.lower().endswith('.pdf'):
         await update.message.reply_text(
-            format_arabic_text("⚠️ الملف يجب أن يكون بصيغة PDF:"),
+            format_arabic_text("""
+            ⚠️ **نوع ملف غير مدعوم!**
+            
+            الرجاء إرسال ملف PDF فقط:
+            """),
             reply_markup=back_to_main_keyboard()
         )
-        return WAITING_PDF
+        return 'WAITING_PDF'
     
-    # تحميل الملف
-    await update.message.reply_text(
-        format_arabic_text("📥 جاري تحميل الملف..."),
+    # التحقق من حجم الملف
+    if document.file_size > MAX_FILE_SIZE:
+        await update.message.reply_text(
+            format_arabic_text(f"""
+            ⚠️ **حجم الملف كبير جداً!**
+            
+            الحجم الأقصى المسموح: {MAX_FILE_SIZE // (1024*1024)} ميجابايت
+            حجم ملفك: {document.file_size // (1024*1024)} ميجابايت
+            
+            الرجاء إرسال ملف أصغر:
+            """),
+            reply_markup=back_to_main_keyboard()
+        )
+        return 'WAITING_PDF'
+    
+    # بدء المعالجة
+    processing_msg = await update.message.reply_text(
+        format_arabic_text("""
+        ⏳ **جاري معالجة الملف...**
+        
+        📥 تحميل الملف...
+        """),
         reply_markup=back_to_main_keyboard()
     )
     
-    file = await context.bot.get_file(document.file_id)
-    
-    # حفظ الملف مؤقتاً
-    temp_file = f"temp_{update.effective_user.id}_{datetime.now().timestamp()}.pdf"
-    
     try:
-        await file.download_to_drive(temp_file)
+        # تحميل الملف
+        file = await context.bot.get_file(document.file_id)
         
-        await update.message.reply_text(
-            format_arabic_text("🔍 جاري قراءة الملف واستخراج النص..."),
+        # إنشاء اسم ملف مؤقت
+        temp_filename = f"pdf_{user_id}_{int(time.time())}.pdf"
+        temp_path = os.path.join(TEMP_DIR, temp_filename)
+        
+        await processing_msg.edit_text(
+            format_arabic_text("""
+            ⏳ **جاري معالجة الملف...**
+            
+            ✅ تم التحميل
+            🔍 قراءة المحتوى...
+            """),
             reply_markup=back_to_main_keyboard()
         )
         
-        # قراءة PDF واستخراج النص
-        text = ""
-        with open(temp_file, 'rb') as pdf_file:
-            reader = PdfReader(pdf_file)
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
+        # تنزيل الملف
+        await file.download_to_drive(temp_path)
         
-        if not text.strip():
-            await update.message.reply_text(
-                format_arabic_text("⚠️ لا يمكن قراءة النص من الملف. تأكد أن الملف يحتوي على نص."),
-                reply_markup=back_to_main_keyboard()
-            )
-            os.remove(temp_file)
-            return WAITING_PDF
-        
-        await update.message.reply_text(
-            format_arabic_text("🤖 جاري تلخيص النص بالذكاء الاصطناعي..."),
+        await processing_msg.edit_text(
+            format_arabic_text("""
+            ⏳ **جاري معالجة الملف...**
+            
+            ✅ تم التحميل
+            ✅ تم قراءة المحتوى
+            🤖 جاري التلخيص بالذكاء الاصطناعي...
+            """),
             reply_markup=back_to_main_keyboard()
         )
         
         # استخدام الذكاء الاصطناعي للتلخيص
-        model = setup_ai()
-        if model:
-            prompt = f"""
-            قم بتلخيص النص التالي بأسلوب علمي أكاديمي مع التركيز على:
-            1. النقاط الرئيسية
-            2. التعريفات المهمة
-            3. القوانين والمعادلات
-            4. الاستنتاجات
-            
-            التلخيص يجب أن يكون باللغة العربية وبشكل منظم.
-            
-            النص:
-            {text[:3000]}  # إرسال أول 3000 حرف فقط
-            
-            قدم التلخيص في نقاط واضحة ومفهومة.
-            """
-            
-            response = model.generate_content(prompt)
-            summary = response.text
-            
-            # إنشاء PDF مخرص
-            await update.message.reply_text(
-                format_arabic_text("📝 جاري إنشاء ملف PDF مخرص..."),
+        result = await ai_system.summarize_pdf(temp_path, user_id)
+        
+        if not result['success']:
+            await processing_msg.edit_text(
+                format_arabic_text(f"""
+                ❌ **فشل في معالجة الملف!**
+                
+                **الخطأ:** {result['error']}
+                
+                **🔄 المحاولات:**
+                1. تأكد أن الملف يحتوي على نص
+                2. حاول باستخدام ملف آخر
+                3. تأكد من جودة الملف
+                
+                الرجاء إرسال ملف آخر:
+                """),
                 reply_markup=back_to_main_keyboard()
             )
             
-            summary_pdf = create_summary_pdf(summary, document.file_name)
+            # حذف الملف المؤقت
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             
-            # إرسال الملف المخرص
-            with open(summary_pdf, 'rb') as pdf_file:
-                await update.message.reply_document(
-                    document=pdf_file,
-                    caption=format_arabic_text(f"""
-                    ✅ **تم تلخيص الملف بنجاح!**
-
-                    **الملف الأصلي:** {document.file_name}
-                    **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-
-                    **ملاحظة:** تم استخدام الذكاء الاصطناعي لتلخيص المحتوى
-                    """),
-                    reply_markup=main_menu_keyboard()
-                )
+            return 'WAITING_PDF'
+        
+        await processing_msg.edit_text(
+            format_arabic_text("""
+            ⏳ **جاري معالجة الملف...**
             
-            # حذف الملفات المؤقتة
-            os.remove(temp_file)
-            os.remove(summary_pdf)
-            
-        else:
-            await update.message.reply_text(
-                format_arabic_text("⚠️ حدث خطأ في خدمة الذكاء الاصطناعي. الرجاء المحاولة لاحقاً."),
-                reply_markup=main_menu_keyboard()
-            )
-    
-    except Exception as e:
-        logger.error(f"خطأ في معالجة PDF: {e}")
-        await update.message.reply_text(
-            format_arabic_text(f"⚠️ حدث خطأ في معالجة الملف: {str(e)}"),
-            reply_markup=main_menu_keyboard()
+            ✅ تم التحميل
+            ✅ تم قراءة المحتوى
+            ✅ تم التلخيص بالذكاء الاصطناعي
+            📝 جاري إنشاء ملف PDF مخرص...
+            """),
+            reply_markup=back_to_main_keyboard()
         )
         
-        # حذف الملفات المؤقتة إن وجدت
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-    
-    return ConversationHandler.END
-
-def create_summary_pdf(summary_text, original_filename):
-    """إنشاء ملف PDF مخرص"""
-    # إعداد اسم الملف
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"ملخص_{original_filename.replace('.pdf', '')}_{timestamp}.pdf"
-    
-    # إنشاء PDF
-    doc = SimpleDocTemplate(
-        output_filename,
-        pagesize=letter,
-        rightMargin=72,
-        leftMargin=72,
-        topMargin=72,
-        bottomMargin=72
-    )
-    
-    # أنماط النص
-    styles = getSampleStyleSheet()
-    
-    # نمط للعنوان
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontName='Arabic',
-        fontSize=16,
-        spaceAfter=30,
-        alignment=1  # محاذاة وسط
-    )
-    
-    # نمط للنص العربي
-    arabic_style = ParagraphStyle(
-        'ArabicText',
-        parent=styles['Normal'],
-        fontName='Arabic',
-        fontSize=12,
-        spaceAfter=12,
-        alignment=0  # محاذاة يمين
-    )
-    
-    # إعداد المحتوى
-    story = []
-    
-    # العنوان
-    title = format_arabic_text(f"ملخص: {original_filename}")
-    story.append(Paragraph(title, title_style))
-    story.append(Spacer(1, 12))
-    
-    # التاريخ
-    date_text = format_arabic_text(f"تاريخ التلخيص: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    story.append(Paragraph(date_text, arabic_style))
-    story.append(Spacer(1, 24))
-    
-    # التلخيص
-    summary_paragraphs = summary_text.split('\n')
-    for para in summary_paragraphs:
-        if para.strip():
-            formatted_para = format_arabic_text(para)
-            story.append(Paragraph(formatted_para, arabic_style))
-            story.append(Spacer(1, 8))
-    
-    # تذييل الصفحة
-    story.append(Spacer(1, 50))
-    footer = format_arabic_text(f"تم التلخيص بواسطة بوت {BOT_NAME} باستخدام الذكاء الاصطناعي")
-    story.append(Paragraph(footer, arabic_style))
-    
-    # بناء PDF
-    doc.build(story)
-    
-    return output_filename
+        # إنشاء ملف PDF مخرص
+        summary_pdf_path = pdf_system.create_summary_pdf(
+            summary_text=result['summary'],
+            original_filename=document.file_name,
+            user_id=user_id,
+            metadata={
+                'original_size': document.file_size,
+                'original_pages': 'غير معروف',
+                'summary_length': result['summary_length'],
+                'processing_time': f'{int(time.time())}',
+                'ai_model': 'Gemini 1.5 Pro'
+            }
+        )
+        
+        if not summary_pdf_path or not os.path.exists(summary_pdf_path):
+            await processing_msg.edit_text(
+                format_arabic_text("""
+                ❌ **فشل في إنشاء الملف المخرص!**
+                
+                **🔄 المحاولات:**
+                1. حاول مرة أخرى
+                2. تأكد من صلاحية الملف الأصلي
+                3. تواصل مع الدعم الفني
+                
+                الرجاء إرسال ملف آخر:
+                """),
+                reply_markup=back_to_main_keyboard()
+            )
+            return 'WAITING_PDF'
+        
+        await processing_msg.edit_text(
+            format_arabic_text("""
+            ⏳ **جاري معالجة الملف...**
+            
+            ✅ تم التحميل
+            ✅ تم قراءة المحتوى
+            ✅ تم التلخيص بالذكاء الاصطناعي
+            ✅ تم إنشاء ملف PDF مخرص
+            📤 جاري إرسال الملف...
+            """),
+            reply_markup=back_to_main_keyboard()
+        )
+        
+        # إرسال الملف المخرص
+        with open(summary_pdf_path, 'rb') as pdf_file:
+            await update.message.reply_document(
+                document=pdf_file,
+                caption=format_arabic_text(f"""
+                ✅ **تم تلخيص الملف بنجاح!**
+                
+                **📄 الملف الأصلي:** {document.file_name}
+                **📊 الملف المخرص:** ملخص_{document.file_name}
+                **📅 تاريخ الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+                
+                **📈 إحصائيات التلخيص:**
+                • طول النص الأصلي: {result['original_length']} حرف
+                • طول النص المخرص: {result['summary_length']} حرف
+                • نسبة التخفيض: {((result['original_length'] - result['summary_length']) / result['original_length'] * 100):.1f}%
+                
+                **🤖 التقنية المستخدمة:** الذكاء الاصطناعي المتقدم
+                **⚡ وقت المعالجة:** {int(time.time() - context.user_data.get('start_time', time.time()))} ثانية
+                
+                **📝 ملاحظة:** تم إنشاء الملف تلقائياً بواسطة {BOT_NAME}
+                """),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=main_menu_keyboard(user_id)
+            )
+        
+        # حذف الملفات المؤقتة
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if os.path.exists(summary_pdf_path):
+            os.remove(summary_pdf_path)
+        
+        await processing_msg.delete()
+        
+        return ConversationHandler.END
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في معالجة PDF: {e}")
+        
+        await processing_msg.edit_text(
+            format_arabic_text(f"""
+            ❌ **حدث خطأ غير متوقع!**
+            
+            **الخطأ:** {str(e)}
+            
+            **🔄 المحاولات:**
+            1. حاول مرة أخرى
+            2. تأكد من صلاحية الملف
+            3. تواصل مع الدعم الفني
+            
+            الرجاء إرسال ملف آخر:
+            """),
+            reply_markup=back_to_main_keyboard()
+        )
+        
+        return 'WAITING_PDF'
 
 # ============================================
 # الخدمة 3: أسئلة وأجوبة بالذكاء الاصطناعي
 # ============================================
 
 @check_maintenance
-@check_balance(db.get_service_price('أسئلة'))
-async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@check_balance('qa_ai')
+@log_activity("qa_ai")
+async def qa_ai_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء خدمة الأسئلة والأجوبة"""
     user_id = update.effective_user.id
     
+    # التحقق من الرصيد
+    service_price = db.get_service_price('qa_ai')
+    user_balance = db.get_balance(user_id)
+    
+    if user_balance < service_price and not is_admin(user_id):
+        await update.message.reply_text(
+            format_arabic_text(f"""
+            ⚠️ **رصيدك غير كاف!**
+            
+            سعر الخدمة: {format_currency(service_price)}
+            رصيدك الحالي: {format_currency(user_balance)}
+            
+            الرجاء شحن رصيدك أولاً.
+            """),
+            reply_markup=main_menu_keyboard(user_id)
+        )
+        return
+    
     # تسجيل استخدام الخدمة
-    db.add_service_usage(user_id, 'أسئلة', db.get_service_price('أسئلة'))
+    db.add_service_usage(
+        user_id=user_id,
+        service_name='أسئلة وأجوبة',
+        service_type='qa_ai',
+        cost=service_price,
+        details='بدء خدمة الأسئلة'
+    )
+    
+    # خصم المبلغ
+    if not is_admin(user_id):
+        db.update_balance(
+            user_id=user_id,
+            amount=-service_price,
+            transaction_type='service_payment',
+            description='أسئلة وأجوبة بالذكاء الاصطناعي'
+        )
     
     await update.message.reply_text(
         format_arabic_text("""
         ❓ **أسئلة وأجوبة بالذكاء الاصطناعي**
-
-        يمكنك الآن:
-        1. إرسال سؤال نصي عن أي مادة
-        2. إرسال صورة تحتوي على سؤال
-        3. الاستفسار عن أي مفهوم علمي
-
-        **المجالات المتاحة:**
+        
+        **🎯 كيفية الاستخدام:**
+        1. أرسل سؤالك نصياً
+        2. أو أرسل صورة تحتوي على سؤال
+        3. انتظر قليلاً للإجابة
+        
+        **📚 المجالات المدعومة:**
         • جميع المواد الدراسية العراقية
-        • المسائل الرياضية والفيزيائية
-        • التعريفات والنظريات العلمية
-        • شرح المفاهيم المعقدة
-
-        **أرسل سؤالك الآن:**
+        • المسائل الرياضية والعلمية
+        • شرح النظريات والمفاهيم
+        • التحليل والاستنتاج
+        
+        **⚡ المميزات:**
+        • إجابات دقيقة وشاملة
+        • شرح مفصل خطوة بخطوة
+        • أمثلة توضيحية
+        • دعم الصور والنصوص
+        
+        **⏳ وقت الاستجابة:** 10-30 ثانية
+        
+        **📝 أرسل سؤالك الآن:**
         """),
         reply_markup=back_to_main_keyboard()
     )
     
-    return WAITING_ANSWER
+    return 'WAITING_QUESTION'
 
-async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الإجابة على الأسئلة"""
+async def process_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة السؤال"""
     user_id = update.effective_user.id
     
-    # التحقق من نوع المحتوى
-    if update.message.text:
-        question = update.message.text
-        await process_text_question(update, context, question)
-    
-    elif update.message.photo:
-        await process_image_question(update, context)
-    
-    else:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إرسال سؤال نصي أو صورة:"),
-            reply_markup=back_to_main_keyboard()
-        )
-        return WAITING_ANSWER
-    
-    return ConversationHandler.END
-
-async def process_text_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str):
-    """معالجة السؤال النصي"""
-    await update.message.reply_text(
-        format_arabic_text("🤖 جاري البحث عن الإجابة..."),
+    # رسالة الانتظار
+    processing_msg = await update.message.reply_text(
+        format_arabic_text("""
+        ⏳ **جاري البحث عن الإجابة...**
+        
+        🤖 تحليل السؤال...
+        """),
         reply_markup=back_to_main_keyboard()
     )
     
     try:
-        model = setup_ai()
-        if model:
-            prompt = f"""
-            أنت معلم عراقي متخصص في المناهج الدراسية العراقية.
-            أجب على السؤال التالي بإجابة علمية دقيقة ومناسبة للمنهج العراقي.
-            
-            **توجيهات:**
-            1. قدم الإجابة باللغة العربية الفصحى
-            2. ركز على المنهج العراقي إن أمكن
-            3. اذكر المصطلحات العلمية بالعربية والإنجليزية
-            4. قدم أمثلة توضيحية إذا لزم الأمر
-            5. نظم الإجابة في نقاط واضحة
-            
-            **السؤال:**
-            {question}
-            
-            **ملاحظة:** كن دقيقاً علمياً ومباشراً في الإجابة.
-            """
-            
-            response = model.generate_content(prompt)
-            answer = response.text
-            
-            # تنسيق الإجابة
-            formatted_answer = format_arabic_text(f"""
-            **السؤال:** {question}
-
-            **الإجابة:**
-            {answer}
-
-            ---
-            *تمت الإجابة باستخدام الذكاء الاصطناعي المتخصص في المناهج العراقية*
-            """)
-            
-            await update.message.reply_text(
-                formatted_answer,
-                reply_markup=main_menu_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
-            )
-        else:
-            raise Exception("لا يمكن الوصول إلى خدمة الذكاء الاصطناعي")
-    
-    except Exception as e:
-        logger.error(f"خطأ في الإجابة على السؤال: {e}")
-        await update.message.reply_text(
-            format_arabic_text("⚠️ حدث خطأ في معالجة سؤالك. الرجاء المحاولة لاحقاً."),
-            reply_markup=main_menu_keyboard()
-        )
-
-async def process_image_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة السؤال بالصورة"""
-    await update.message.reply_text(
-        format_arabic_text("📷 جاري تحليل الصورة..."),
-        reply_markup=back_to_main_keyboard()
-    )
-    
-    try:
-        # تحميل الصورة
-        photo = update.message.photo[-1]
-        file = await context.bot.get_file(photo.file_id)
+        question_text = ""
+        is_image = False
         
-        # حفظ الصورة مؤقتاً
-        temp_image = f"temp_image_{update.effective_user.id}.jpg"
-        await file.download_to_drive(temp_image)
-        
-        # استخراج النص من الصورة
-        text = pytesseract.image_to_string(Image.open(temp_image), lang='ara+eng')
-        
-        if not text.strip():
-            # إذا لم يتم التعرف على نص، اطلب من المستخدم كتابته
-            await update.message.reply_text(
+        # التحقق من نوع المحتوى
+        if update.message.text:
+            question_text = update.message.text
+            
+        elif update.message.photo:
+            is_image = True
+            
+            await processing_msg.edit_text(
                 format_arabic_text("""
-                ⚠️ لم أستطع قراءة النص من الصورة.
-
-                الرجاء كتابة السؤال نصياً:
+                ⏳ **جاري البحث عن الإجابة...**
+                
+                🤖 تحليل السؤال...
+                📷 قراءة الصورة...
                 """),
                 reply_markup=back_to_main_keyboard()
             )
-            os.remove(temp_image)
-            return WAITING_ANSWER
+            
+            # تحميل الصورة
+            photo = update.message.photo[-1]
+            file = await context.bot.get_file(photo.file_id)
+            
+            # حفظ الصورة مؤقتاً
+            temp_image = f"question_{user_id}_{int(time.time())}.jpg"
+            temp_path = os.path.join(TEMP_DIR, temp_image)
+            
+            await file.download_to_drive(temp_path)
+            
+            # استخدام الذكاء الاصطناعي لتحليل الصورة
+            result = await ai_system.analyze_image_question(temp_path)
+            
+            if not result['success']:
+                await processing_msg.edit_text(
+                    format_arabic_text(f"""
+                    ❌ **فشل في قراءة الصورة!**
+                    
+                    **الخطأ:** {result['error']}
+                    
+                    **🔄 المحاولات:**
+                    1. تأكد من وضوح الصورة
+                    2. حاول كتابة السؤال نصياً
+                    3. استخدم صورة بدقة أعلى
+                    
+                    الرجاء إعادة إرسال السؤال:
+                    """),
+                    reply_markup=back_to_main_keyboard()
+                )
+                
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                
+                return 'WAITING_QUESTION'
+            
+            question_text = result['extracted_text']
+            
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
         
-        # استخدام الذكاء الاصطناعي للإجابة
-        await update.message.reply_text(
-            format_arabic_text("🔍 تم قراءة السؤال، جاري البحث عن الإجابة..."),
+        else:
+            await processing_msg.edit_text(
+                format_arabic_text("""
+                ⚠️ **نوع محتوى غير مدعوم!**
+                
+                **📝 المدعوم:**
+                1. النصوص
+                2. الصور
+                
+                الرجاء إرسال سؤال نصي أو صورة:
+                """),
+                reply_markup=back_to_main_keyboard()
+            )
+            return 'WAITING_QUESTION'
+        
+        await processing_msg.edit_text(
+            format_arabic_text("""
+            ⏳ **جاري البحث عن الإجابة...**
+            
+            ✅ تم تحليل السؤال
+            🔍 جاري البحث في قاعدة المعرفة...
+            """),
             reply_markup=back_to_main_keyboard()
         )
         
-        model = setup_ai()
-        if model:
-            prompt = f"""
-            هذا نص تم استخراجه من صورة لسؤال تعليمي.
-            أجب على السؤال التالي بإجابة علمية دقيقة.
+        # استخدام الذكاء الاصطناعي للإجابة
+        result = await ai_system.answer_question(question_text, user_id=user_id)
+        
+        if not result['success']:
+            await processing_msg.edit_text(
+                format_arabic_text(f"""
+                ❌ **فشل في الحصول على إجابة!**
+                
+                **الخطأ:** {result['error']}
+                
+                **🔄 المحاولات:**
+                1. حاول صياغة السؤال بشكل أوضح
+                2. تأكد من اتصال الإنترنت
+                3. حاول مرة أخرى لاحقاً
+                
+                الرجاء إعادة إرسال السؤال:
+                """),
+                reply_markup=back_to_main_keyboard()
+            )
+            return 'WAITING_QUESTION'
+        
+        await processing_msg.edit_text(
+            format_arabic_text("""
+            ⏳ **جاري البحث عن الإجابة...**
             
-            **النص المستخرج من الصورة:**
-            {text}
+            ✅ تم تحليل السؤال
+            ✅ تم العثور على إجابة
+            📝 جاري تحسين التنسيق...
+            """),
+            reply_markup=back_to_main_keyboard()
+        )
+        
+        # إرسال الإجابة
+        answer_text = format_arabic_text(f"""
+        🤖 **إجابة على سؤالك:**
+        
+        **❓ السؤال:**
+        {question_text[:500]}{'...' if len(question_text) > 500 else ''}
+        
+        **✅ الإجابة:**
+        {result['answer']}
+        
+        **📊 معلومات الإجابة:**
+        • الثقة: {result['confidence'] * 100:.1f}%
+        • المصادر: {'، '.join(result['sources']) if result['sources'] else 'معرفة عامة'}
+        • الطول: {len(result['answer'])} حرف
+        
+        **💡 نصائح:**
+        1. يمكنك طرح أسئلة متابعة
+        2. للإجابة على صور جديدة، أرسلها مباشرة
+        3. لأسئلة معقدة، قسمها إلى أجزاء
+        
+        **📝 ملاحظة:** تمت الإجابة باستخدام الذكاء الاصطناعي المتقدم
+        """)
+        
+        # تقسيم الإجابة إذا كانت طويلة
+        if len(answer_text) > 4000:
+            parts = []
+            current_part = ""
             
-            **توجيهات الإجابة:**
-            1. أجب باللغة العربية الفصحى
-            2. ركز على الجانب التعليمي
-            3. قدم خطوات الحل إن كان سؤالاً رياضياً
-            4. اشرح المفاهيم العلمية بوضوح
-            """
+            for line in answer_text.split('\n'):
+                if len(current_part) + len(line) + 1 > 4000:
+                    parts.append(current_part)
+                    current_part = line
+                else:
+                    current_part += '\n' + line if current_part else line
             
-            response = model.generate_content(prompt)
-            answer = response.text
+            if current_part:
+                parts.append(current_part)
             
-            formatted_answer = format_arabic_text(f"""
-            **السؤال (من الصورة):**
-            {text[:200]}...
-
-            **الإجابة:**
-            {answer}
-
-            ---
-            *تمت قراءة السؤال من الصورة والإجابة باستخدام الذكاء الاصطناعي*
-            """)
-            
-            await update.message.reply_text(
-                formatted_answer,
-                reply_markup=main_menu_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
+            for i, part in enumerate(parts):
+                if i == 0:
+                    await processing_msg.edit_text(
+                        part[:4000],
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=main_menu_keyboard(user_id)
+                    )
+                else:
+                    await update.message.reply_text(
+                        part[:4000],
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+        else:
+            await processing_msg.edit_text(
+                answer_text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=main_menu_keyboard(user_id)
             )
         
-        # حذف الصورة المؤقتة
-        os.remove(temp_image)
+        return ConversationHandler.END
         
     except Exception as e:
-        logger.error(f"خطأ في معالجة صورة السؤال: {e}")
-        await update.message.reply_text(
-            format_arabic_text("⚠️ حدث خطأ في معالجة الصورة. الرجاء المحاولة لاحقاً."),
-            reply_markup=main_menu_keyboard()
+        logger.error(f"❌ خطأ في معالجة السؤال: {e}")
+        
+        await processing_msg.edit_text(
+            format_arabic_text(f"""
+            ❌ **حدث خطأ غير متوقع!**
+            
+            **الخطأ:** {str(e)}
+            
+            **🔄 المحاولات:**
+            1. حاول مرة أخرى
+            2. صغ سؤالك بشكل مختلف
+            3. تواصل مع الدعم الفني
+            
+            الرجاء إعادة إرسال السؤال:
+            """),
+            reply_markup=back_to_main_keyboard()
         )
+        
+        return 'WAITING_QUESTION'
 
 # ============================================
 # الخدمة 4: ملازمي ومرشحاتي
 # ============================================
 
 @check_maintenance
-@check_balance(db.get_service_price('ملازم'))
-async def show_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض المواد التعليمية"""
+@check_balance('materials')
+@log_activity("materials_library")
+async def materials_library(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض مكتبة المواد التعليمية"""
     user_id = update.effective_user.id
     
+    # التحقق من الرصيد
+    service_price = db.get_service_price('materials')
+    user_balance = db.get_balance(user_id)
+    
+    if user_balance < service_price and not is_admin(user_id):
+        await update.message.reply_text(
+            format_arabic_text(f"""
+            ⚠️ **رصيدك غير كاف!**
+            
+            سعر الخدمة: {format_currency(service_price)}
+            رصيدك الحالي: {format_currency(user_balance)}
+            
+            الرجاء شحن رصيدك أولاً.
+            """),
+            reply_markup=main_menu_keyboard(user_id)
+        )
+        return
+    
     # تسجيل استخدام الخدمة
-    db.add_service_usage(user_id, 'ملازم', db.get_service_price('ملازم'))
+    db.add_service_usage(
+        user_id=user_id,
+        service_name='ملازمي ومرشحاتي',
+        service_type='materials',
+        cost=service_price,
+        details='تصفح المكتبة'
+    )
+    
+    # خصم المبلغ
+    if not is_admin(user_id):
+        db.update_balance(
+            user_id=user_id,
+            amount=-service_price,
+            transaction_type='service_payment',
+            description='ملازمي ومرشحاتي'
+        )
     
     await update.message.reply_text(
         format_arabic_text("""
         📚 **ملازمي ومرشحاتي**
-
-        اختر المرحلة الدراسية:
+        
+        **🎯 مكتبة المواد التعليمية الشاملة**
+        
+        **📂 التصنيفات المتاحة:**
+        • المرحلة الدراسية
+        • المادة التعليمية
+        • نوع الملف
+        • التصنيف الموضوعي
+        
+        **⚡ المميزات:**
+        • آلاف المواد التعليمية
+        • تحديث مستمر للمحتوى
+        • جودة عالية ومراجعة
+        • تنزيل مباشر وسريع
+        
+        **🔍 اختر طريقة التصفح:**
         """),
-        reply_markup=stages_keyboard()
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📊 حسب المرحلة", callback_data="materials_by_stage"),
+                InlineKeyboardButton("🔍 بحث مباشر", callback_data="materials_search")
+            ],
+            [
+                InlineKeyboardButton("📈 الأكثر تنزيلاً", callback_data="materials_popular"),
+                InlineKeyboardButton("🆕 الأحدث", callback_data="materials_new")
+            ],
+            [
+                InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="main_menu")
+            ]
+        ])
     )
-    
-    return
 
-async def handle_stage_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة اختيار المرحلة"""
-    stage = update.message.text
+async def materials_by_stage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض المواد حسب المرحلة"""
+    query = update.callback_query
+    await query.answer()
     
-    # تحويل اسم المرحلة إلى كود
+    await query.edit_message_text(
+        text=format_arabic_text("""
+        📚 **المواد حسب المرحلة الدراسية**
+        
+        **اختر المرحلة:**
+        """),
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("المرحلة الأولى", callback_data="stage_first"),
+                InlineKeyboardButton("المرحلة الثانية", callback_data="stage_second")
+            ],
+            [
+                InlineKeyboardButton("المرحلة الثالثة", callback_data="stage_third"),
+                InlineKeyboardButton("المرحلة الرابعة", callback_data="stage_fourth")
+            ],
+            [
+                InlineKeyboardButton("🔙 رجوع", callback_data="materials_library")
+            ]
+        ])
+    )
+
+async def show_stage_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض مواد مرحلة محددة"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
     stage_map = {
-        "المرحلة الأولى": "first",
-        "المرحلة الثانية": "second",
-        "المرحلة الثالثة": "third",
-        "المرحلة الرابعة": "fourth"
+        'stage_first': 'المرحلة الأولى',
+        'stage_second': 'المرحلة الثانية',
+        'stage_third': 'المرحلة الثالثة',
+        'stage_fourth': 'المرحلة الرابعة'
     }
     
-    stage_code = stage_map.get(stage)
-    
-    if not stage_code:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء اختيار مرحلة صحيحة:"),
-            reply_markup=stages_keyboard()
-        )
+    stage_name = stage_map.get(query.data)
+    if not stage_name:
         return
     
-    # الحصول على المواد الخاصة بالمرحلة
-    materials = db.get_materials(stage_code)
+    # الحصول على مواد المرحلة
+    materials = db.get_materials(filters={'stage': stage_name}, limit=10)
     
     if not materials:
-        await update.message.reply_text(
-            format_arabic_text(f"""
-            📭 **لا توجد مواد متاحة للمرحلة {stage}**
-
-            سيتم إضافة مواد قريباً لهذه المرحلة.
-
-            للعودة للقائمة الرئيسية، اضغط:
+        await query.edit_message_text(
+            text=format_arabic_text(f"""
+            📭 **لا توجد مواد متاحة للمرحلة {stage_name}**
+            
+            **📝 يمكنك:**
+            1. تصفح مراحل أخرى
+            2. استخدام البحث المباشر
+            3. العودة لاحقاً
+            
+            **🔄 سيتم إضافة مواد جديدة قريباً!**
             """),
-            reply_markup=main_menu_keyboard()
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 رجوع", callback_data="materials_by_stage")],
+                [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="main_menu")]
+            ])
         )
         return
     
     # عرض المواد
     materials_text = format_arabic_text(f"""
-    📚 **المواد المتاحة للمرحلة {stage}:**
-
+    📚 **المواد التعليمية - {stage_name}**
+    
+    **📊 إجمالي المواد:** {len(materials)}
+    
+    **📝 قائمة المواد:**
     """)
     
-    for material in materials[:10]:  # عرض أول 10 مواد فقط
-        materials_text += f"""
-        • **{material['name']}**
-          📝 {material['description'][:100]}...
-          📅 {material['added_date'][:10]}
-        """
+    keyboard = []
     
-    materials_text += f"\n\n**إجمالي المواد:** {len(materials)}"
-    
-    await update.message.reply_text(
-        materials_text,
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    # إرسال كل مادة كملف منفصل
-    for material in materials[:5]:  # إرسال أول 5 مواد فقط لتجنب التحميل الزائد
-        try:
-            await context.bot.send_document(
-                chat_id=update.effective_chat.id,
-                document=material['file_id'],
-                caption=format_arabic_text(f"""
-                **{material['name']}**
-                
-                {material['description']}
-                
-                **المرحلة:** {stage}
-                **تاريخ الإضافة:** {material['added_date'][:10]}
-                """)
+    for i, material in enumerate(materials, 1):
+        title = material['title'][:30] + ('...' if len(material['title']) > 30 else '')
+        downloads = material['download_count']
+        
+        materials_text += f"\n{i}. **{title}**"
+        materials_text += f"\n   📥 {downloads} تنزيل • 📅 {format_date(material['upload_date'], 'date')}"
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{i}. {title}",
+                callback_data=f"material_{material['material_id']}"
             )
-            await asyncio.sleep(1)  # تأخير بين الإرسالات
-        except Exception as e:
-            logger.error(f"خطأ في إرسال الملف {material['name']}: {e}")
-            continue
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="materials_by_stage")])
+    
+    await query.edit_message_text(
+        text=materials_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def show_material_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تفاصيل مادة محددة"""
+    query = update.callback_query
+    await query.answer()
+    
+    material_id = int(query.data.split('_')[1])
+    
+    # الحصول على تفاصيل المادة
+    db.cursor.execute('SELECT * FROM educational_materials WHERE material_id = ?', (material_id,))
+    material = db.cursor.fetchone()
+    
+    if not material:
+        await query.answer("❌ المادة غير موجودة!", show_alert=True)
+        return
+    
+    material = dict(material)
+    
+    # زيادة عداد المشاهدات
+    db.increment_download_count(material_id)
+    
+    # إنشاء نص التفاصيل
+    details_text = format_arabic_text(f"""
+    📄 **تفاصيل المادة**
+    
+    **📌 العنوان:** {material['title']}
+    **📝 الوصف:** {material['description'] or 'لا يوجد وصف'}
+    
+    **📊 المعلومات:**
+    • التصنيف: {material['category'] or 'غير محدد'}
+    • المرحلة: {material['stage'] or 'غير محدد'}
+    • المادة: {material['subject'] or 'غير محدد'}
+    • نوع الملف: {material['file_type'] or 'غير محدد'}
+    
+    **📈 الإحصائيات:**
+    • عدد التنزيلات: {material['download_count']}
+    • التقييم: {'★' * int(material['rating'])} ({material['rating']}/5)
+    • تاريخ الإضافة: {format_date(material['upload_date'], 'full')}
+    
+    **🏷️ الوسوم:** {material['tags'] or 'لا توجد وسوم'}
+    
+    **📥 يمكنك تنزيل المادة الآن:**
+    """)
+    
+    await query.edit_message_text(
+        text=details_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📥 تنزيل المادة", callback_data=f"download_{material_id}"),
+                InlineKeyboardButton("⭐ تقييم", callback_data=f"rate_{material_id}")
+            ],
+            [
+                InlineKeyboardButton("🔙 رجوع", callback_data="materials_library"),
+                InlineKeyboardButton("🏠 الرئيسية", callback_data="main_menu")
+            ]
+        ])
+    )
+
+async def download_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تنزيل مادة"""
+    query = update.callback_query
+    await query.answer()
+    
+    material_id = int(query.data.split('_')[1])
+    
+    # الحصول على تفاصيل المادة
+    db.cursor.execute('SELECT * FROM educational_materials WHERE material_id = ?', (material_id,))
+    material = db.cursor.fetchone()
+    
+    if not material:
+        await query.answer("❌ المادة غير موجودة!", show_alert=True)
+        return
+    
+    material = dict(material)
+    
+    # إرسال الملف
+    try:
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=material['file_id'],
+            caption=format_arabic_text(f"""
+            📥 **تم تنزيل المادة بنجاح!**
+            
+            **📌 العنوان:** {material['title']}
+            **📝 الوصف:** {material['description'] or 'لا يوجد وصف'}
+            
+            **📊 المعلومات:**
+            • المرحلة: {material['stage']}
+            • المادة: {material['subject']}
+            • تاريخ الإضافة: {format_date(material['upload_date'], 'date')}
+            
+            **💡 نصائح:**
+            1. احفظ الملف في مكان آمن
+            2. شاركه مع زملائك
+            3. يمكنك البحث عن مواد أخرى
+            
+            **📞 للاستفسارات:** {db.get_setting('support_username') or ADMIN_USERNAME}
+            """),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu_keyboard(query.from_user.id)
+        )
+        
+        await query.answer("✅ تم إرسال الملف!", show_alert=True)
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال الملف: {e}")
+        await query.answer("❌ فشل في إرسال الملف!", show_alert=True)
 
 # ============================================
 # لوحة التحكم للمشرف
 # ============================================
 
 @admin_only
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@log_activity("admin_panel")
+async def admin_panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """لوحة تحكم المشرف"""
-    await update.message.reply_text(
-        format_arabic_text("""
-        👑 **لوحة تحكم المشرف**
-
-        **اختر القسم المطلوب:**
-        """),
-        reply_markup=admin_keyboard()
-    )
+    user_id = update.effective_user.id
     
-    return ADMIN_PANEL
+    # إحصائيات سريعة
+    total_users = db.get_user_count()
+    active_users = db.get_active_users_count(days=1)
+    daily_revenue = db.get_total_revenue('daily')
+    total_materials = len(db.get_materials())
+    
+    admin_text = format_arabic_text(f"""
+    👑 **لوحة تحكم المشرف**
+    
+    **📊 نظرة سريعة:**
+    • إجمالي المستخدمين: {format_number(total_users)}
+    • المستخدمين النشطين اليوم: {format_number(active_users)}
+    • الإيرادات اليومية: {format_currency(daily_revenue)}
+    • عدد المواد: {format_number(total_materials)}
+    
+    **⚡ الإجراءات السريعة:**
+    1. عرض الإحصائيات التفصيلية
+    2. إدارة المستخدمين
+    3. الشحن والإيرادات
+    4. إعدادات الخدمات
+    
+    **🔧 أدوات التحكم:**
+    • إعدادات البوت
+    • إدارة المواد التعليمية
+    • برنامج الدعوة
+    • البث للمستخدمين
+    
+    **📈 آخر التحديثات:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+    """)
+    
+    await update.message.reply_text(
+        admin_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=admin_panel_keyboard()
+    )
 
 @admin_only
-async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض إحصائيات البوت"""
-    # إحصائيات المستخدمين
-    users = db.get_all_users()
-    total_users = len(users)
-    active_today = 0
-    total_balance = 0
+async def admin_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض إحصائيات مفصلة"""
+    user_id = update.effective_user.id
     
-    today = datetime.now().date()
-    for user in users:
-        total_balance += user['balance']
-        join_date = datetime.strptime(user['join_date'][:10], '%Y-%m-%d').date()
-        if join_date == today:
-            active_today += 1
+    # إحصائيات المستخدمين
+    total_users = db.get_user_count()
+    new_today = db.get_daily_stats()['new_users']
+    active_today = db.get_daily_stats()['active_users']
+    banned_users = len(db.get_all_users(filters={'is_banned': 1}))
+    
+    # إحصائيات مالية
+    daily_revenue = db.get_total_revenue('daily')
+    weekly_revenue = db.get_total_revenue('weekly')
+    monthly_revenue = db.get_total_revenue('monthly')
+    total_balance = sum(user['balance'] for user in db.get_all_users())
     
     # إحصائيات الخدمات
-    service_stats = db.get_service_stats()
-    services_text = ""
-    total_income = 0
-    
-    for stat in service_stats:
-        services_text += f"\n• {stat['service_type']}: {stat['count']} استخدام ({stat['total']} {CURRENCY})"
-        total_income += stat['total']
+    service_stats = db.get_service_stats('daily')
     
     # إحصائيات المواد
-    materials = db.get_materials()
-    total_materials = len(materials)
+    total_materials = len(db.get_materials())
+    materials_today = db.get_daily_stats()['materials_downloaded']
     
-    stats_text = f"""
-    📊 **إحصائيات البوت:**
-
+    stats_text = format_arabic_text(f"""
+    📊 **الإحصائيات التفصيلية**
+    
     **👥 المستخدمين:**
-    • إجمالي المستخدمين: {total_users}
-    • مسجلين اليوم: {active_today}
-    • إجمالي الأرصدة: {total_balance} {CURRENCY}
-
-    **💰 الإيرادات:**
-    • إجمالي الدخل: {total_income} {CURRENCY}
-    • الخدمات:{services_text}
-
+    • إجمالي المستخدمين: {format_number(total_users)}
+    • مسجلين اليوم: {format_number(new_today)}
+    • نشطين اليوم: {format_number(active_today)}
+    • محظورين: {format_number(banned_users)}
+    
+    **💰 المالية:**
+    • الإيرادات اليومية: {format_currency(daily_revenue)}
+    • الإيرادات الأسبوعية: {format_currency(weekly_revenue)}
+    • الإيرادات الشهرية: {format_currency(monthly_revenue)}
+    • إجمالي الأرصدة: {format_currency(total_balance)}
+    
+    **📊 الخدمات (اليوم):**
+    """)
+    
+    for service, data in service_stats.items():
+        stats_text += f"\n• {service}: {data['count']} استخدام ({format_currency(data['revenue'])})"
+    
+    stats_text += f"""
+    
     **📚 المواد التعليمية:**
-    • إجمالي المواد: {total_materials}
-
-    **⚙️ الإعدادات:**
-    • وضع الصيانة: {'مفعل' if db.get_maintenance_mode() else 'معطل'}
-    • مكافأة الدعوة: {db.get_invite_bonus()} {CURRENCY}
+    • إجمالي المواد: {format_number(total_materials)}
+    • تم تنزيلها اليوم: {format_number(materials_today)}
+    
+    **📈 النمو:**
+    • معدل النمو اليومي: {((new_today / total_users) * 100) if total_users > 0 else 0:.1f}%
+    • متوسط الإيرادات/يوم: {format_currency(daily_revenue)}
+    • متوسط الاستخدام/مستخدم: {active_today / total_users if total_users > 0 else 0:.1f}
+    
+    **⏱️ آخر تحديث:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     """
     
     await update.message.reply_text(
-        format_arabic_text(stats_text),
-        reply_markup=admin_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
+        stats_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=admin_panel_keyboard()
     )
 
 @admin_only
-async def manage_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_users_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة المستخدمين"""
-    users = db.get_all_users()[:50]  # عرض أول 50 مستخدم فقط
-    
-    if not users:
-        await update.message.reply_text(
-            format_arabic_text("📭 لا يوجد مستخدمين بعد."),
-            reply_markup=admin_keyboard()
-        )
-        return
-    
-    users_text = "👥 **المستخدمين (أحدث 50):**\n\n"
-    
-    for i, user in enumerate(users[:10], 1):  # عرض أول 10 في الرسالة الأولى
-        status = "🚫 محظور" if user['banned'] else "✅ نشط"
-        users_text += f"""
-        **{i}. {user['first_name']} {user['last_name'] or ''}**
-        • الأيدي: `{user['user_id']}`
-        • اليوزر: @{user['username'] or 'بدون'}
-        • الرصيد: {user['balance']} {CURRENCY}
-        • الحالة: {status}
-        • تاريخ التسجيل: {user['join_date'][:10]}
-        """
-    
-    # إنشاء زرين لكل مستخدم للإدارة
-    keyboard = []
-    for user in users[:5]:  # إضافة أزرار لأول 5 مستخدمين
-        keyboard.append([
-            InlineKeyboardButton(
-                f"🚫 حظر {user['user_id']}",
-                callback_data=f"ban_{user['user_id']}"
-            ),
-            InlineKeyboardButton(
-                f"💰 شحن {user['user_id']}",
-                callback_data=f"charge_{user['user_id']}"
-            )
-        ])
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_to_admin")])
-    
     await update.message.reply_text(
-        format_arabic_text(users_text),
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=ParseMode.MARKDOWN
+        format_arabic_text("""
+        👥 **إدارة المستخدمين**
+        
+        **اختر الإجراء المطلوب:**
+        """),
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔍 بحث عن مستخدم", callback_data="admin_search_user"),
+                InlineKeyboardButton("📋 عرض جميع المستخدمين", callback_data="admin_list_users")
+            ],
+            [
+                InlineKeyboardButton("🚫 حظر مستخدم", callback_data="admin_ban_user"),
+                InlineKeyboardButton("✅ إلغاء حظر", callback_data="admin_unban_user")
+            ],
+            [
+                InlineKeyboardButton("💰 شحن رصيد", callback_data="admin_charge_user"),
+                InlineKeyboardButton("📊 إحصائيات مستخدم", callback_data="admin_user_stats")
+            ],
+            [
+                InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+            ]
+        ])
     )
 
 @admin_only
-async def charge_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء عملية شحن رصيد مستخدم"""
-    await update.message.reply_text(
-        format_arabic_text("💰 **شحن رصيد مستخدم**\n\nأرسل أيدي المستخدم:"),
+async def admin_search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بحث عن مستخدم"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        text=format_arabic_text("""
+        🔍 **بحث عن مستخدم**
+        
+        **يمكنك البحث بـ:**
+        • أيدي المستخدم
+        • اسم المستخدم
+        • الاسم الأول
+        • الاسم الأخير
+        
+        **أرسل كلمة البحث:**
+        """),
         reply_markup=back_to_main_keyboard()
     )
     
-    return CHARGE_USER
+    return 'ADMIN_SEARCH_USER'
 
-@admin_only
-async def get_user_id_for_charge(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على أيدي المستخدم للشحن"""
-    try:
-        user_id = int(update.message.text)
-        user = db.get_user(user_id)
-        
-        if not user:
-            await update.message.reply_text(
-                format_arabic_text("⚠️ المستخدم غير موجود. أرسل أيدي صحيح:"),
-                reply_markup=back_to_main_keyboard()
-            )
-            return CHARGE_USER
-        
-        context.user_data['charge_user_id'] = user_id
-        context.user_data['charge_user_name'] = f"{user['first_name']} {user['last_name'] or ''}"
-        
+async def process_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة بحث المشرف"""
+    search_term = update.message.text
+    
+    # البحث عن المستخدمين
+    users = db.search_users(search_term)
+    
+    if not users:
         await update.message.reply_text(
             format_arabic_text(f"""
-            ✅ **تم العثور على المستخدم:**
-            الاسم: {user['first_name']} {user['last_name'] or ''}
-            الرصيد الحالي: {user['balance']} {CURRENCY}
-
-            **أرسل المبلغ للشحن:**
+            📭 **لا توجد نتائج لـ "{search_term}"**
+            
+            **🔄 المحاولات:**
+            1. تحقق من صحة البحث
+            2. استخدم أجزاء من الاسم
+            3. استخدم أيدي المستخدم
+            
+            **أرسل بحث جديد:**
             """),
             reply_markup=back_to_main_keyboard()
         )
-        
-        return ADD_POINTS
+        return 'ADMIN_SEARCH_USER'
     
-    except ValueError:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إرسال أيدي صحيح (أرقام فقط):"),
-            reply_markup=back_to_main_keyboard()
-        )
-        return CHARGE_USER
+    # عرض النتائج
+    results_text = format_arabic_text(f"""
+    🔍 **نتائج البحث لـ "{search_term}"**
+    
+    **📊 عدد النتائج:** {len(users)}
+    
+    **📝 النتائج:**
+    """)
+    
+    keyboard = []
+    
+    for i, user in enumerate(users[:10], 1):
+        name = f"{user['first_name'] or ''} {user['last_name'] or ''}".strip()
+        if not name:
+            name = f"المستخدم {user['user_id']}"
+        
+        status = "🚫 محظور" if user['is_banned'] else "✅ نشط"
+        balance = format_currency(user['balance'])
+        
+        results_text += f"\n{i}. **{name}**"
+        results_text += f"\n   • الأيدي: `{user['user_id']}`"
+        results_text += f"\n   • اليوزر: @{user['username'] or 'بدون'}"
+        results_text += f"\n   • الرصيد: {balance}"
+        results_text += f"\n   • الحالة: {status}"
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{i}. {name[:15]}...",
+                callback_data=f"admin_view_user_{user['user_id']}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users_management")])
+    
+    await update.message.reply_text(
+        results_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return ConversationHandler.END
 
 @admin_only
-async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إضافة النقاط للمستخدم"""
+async def admin_view_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تفاصيل مستخدم"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = int(query.data.split('_')[-1])
+    user = db.get_user(user_id)
+    
+    if not user:
+        await query.answer("❌ المستخدم غير موجود!", show_alert=True)
+        return
+    
+    # الحصول على آخر العمليات
+    transactions = db.get_transactions(user_id=user_id, limit=5)
+    
+    # إنشاء نص التفاصيل
+    details_text = format_arabic_text(f"""
+    👤 **تفاصيل المستخدم**
+    
+    **🆔 الأيدي:** `{user['user_id']}`
+    **👤 الاسم:** {user['first_name'] or ''} {user['last_name'] or ''}
+    **📧 اليوزر:** @{user['username'] or 'بدون'}
+    
+    **📊 المعلومات:**
+    • الرصيد: {format_currency(user['balance'])}
+    • تاريخ التسجيل: {format_date(user['join_date'], 'full')}
+    • آخر نشاط: {format_date(user['last_active'], 'relative')}
+    • اللغة: {user['language_code'] or 'ar'}
+    
+    **💰 الإحصائيات المالية:**
+    • إجمالي الإيداعات: {format_currency(user['total_earned'])}
+    • إجمالي المصروفات: {format_currency(user['total_spent'])}
+    • صافي الربح: {format_currency(user['total_earned'] - user['total_spent'])}
+    
+    **👥 الإحالات:**
+    • عدد المدعوين: {user['referral_count']}
+    • كود الدعوة: `{user['invite_code']}`
+    
+    **🚫 حالة الحظر:** {"محظور" if user['is_banned'] else "نشط"}
+    {f"• سبب الحظر: {user['ban_reason']}" if user['is_banned'] else ""}
+    
+    **📝 آخر العمليات:**
+    """)
+    
+    if transactions:
+        for trans in transactions:
+            amount = trans['amount']
+            amount_str = f"+{format_currency(amount)}" if amount > 0 else format_currency(amount)
+            details_text += f"\n• {trans['description']}: {amount_str} ({format_date(trans['created_at'], 'relative')})"
+    else:
+        details_text += "\n📭 لا توجد عمليات سابقة"
+    
+    # إنشاء أزرار الإجراءات
+    keyboard = []
+    
+    if user['is_banned']:
+        keyboard.append([InlineKeyboardButton("✅ إلغاء حظر", callback_data=f"admin_unban_{user_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🚫 حظر", callback_data=f"admin_ban_{user_id}")])
+    
+    keyboard.append([
+        InlineKeyboardButton("💰 شحن رصيد", callback_data=f"admin_charge_{user_id}"),
+        InlineKeyboardButton("📊 الإحصائيات", callback_data=f"admin_stats_{user_id}")
+    ])
+    
+    keyboard.append([
+        InlineKeyboardButton("🔙 رجوع", callback_data="admin_users_management"),
+        InlineKeyboardButton("🏠 الرئيسية", callback_data="main_menu")
+    ])
+    
+    await query.edit_message_text(
+        text=details_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+@admin_only
+async def admin_charge_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء عملية شحن رصيد"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = int(query.data.split('_')[-1])
+    context.user_data['charge_user_id'] = user_id
+    
+    user = db.get_user(user_id)
+    user_name = f"{user['first_name'] or ''} {user['last_name'] or ''}".strip()
+    if not user_name:
+        user_name = f"المستخدم {user_id}"
+    
+    await query.edit_message_text(
+        text=format_arabic_text(f"""
+        💰 **شحن رصيد للمستخدم**
+        
+        **👤 المستخدم:** {user_name}
+        **🆔 الأيدي:** `{user_id}`
+        **💵 الرصيد الحالي:** {format_currency(user['balance'])}
+        
+        **أرسل المبلغ للشحن:**
+        (يمكن أن يكون موجباً للإضافة أو سالباً للخصم)
+        """),
+        reply_markup=back_to_main_keyboard()
+    )
+    
+    return 'ADMIN_CHARGE_AMOUNT'
+
+async def process_admin_charge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة شحن الرصيد"""
     try:
         amount = int(update.message.text)
         user_id = context.user_data.get('charge_user_id')
-        user_name = context.user_data.get('charge_user_name')
         
-        if amount <= 0:
+        if not user_id:
             await update.message.reply_text(
-                format_arabic_text("⚠️ المبلغ يجب أن يكون أكبر من صفر:"),
-                reply_markup=back_to_main_keyboard()
+                format_arabic_text("""
+                ⚠️ **انتهت الجلسة!**
+                
+                الرجاء إعادة العملية من البداية.
+                """),
+                reply_markup=admin_panel_keyboard()
             )
-            return ADD_POINTS
+            return ConversationHandler.END
+        
+        user = db.get_user(user_id)
+        old_balance = user['balance']
+        new_balance = old_balance + amount
         
         # شحن الرصيد
-        db.update_balance(user_id, amount)
-        db.add_transaction(user_id, amount, 'admin_charge', f'شحن بواسطة المشرف')
-        
-        # الحصول على الرصيد الجديد
-        new_balance = db.get_balance(user_id)
+        db.update_balance(
+            user_id=user_id,
+            amount=amount,
+            transaction_type='admin_charge',
+            description=f'شحن بواسطة المشرف: {amount} {CURRENCY_SYMBOL}'
+        )
         
         # إرسال إشعار للمستخدم
         try:
             await context.bot.send_message(
                 user_id,
                 format_arabic_text(f"""
-                💰 **تم شحن رصيدك!**
-
-                **المبلغ المضاف:** {amount} {CURRENCY}
-                **الرصيد الجديد:** {new_balance} {CURRENCY}
-                **بواسطة:** المشرف
-
-                شكراً لاستخدامك بوت {BOT_NAME}!
-                """)
+                💰 **تم تحديث رصيدك!**
+                
+                **📝 التفاصيل:**
+                • المبلغ: {format_currency(amount)}
+                • الرصيد السابق: {format_currency(old_balance)}
+                • الرصيد الجديد: {format_currency(new_balance)}
+                • التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+                • بواسطة: المشرف
+                
+                **📞 للاستفسارات:** {db.get_setting('support_username') or ADMIN_USERNAME}
+                """),
+                parse_mode=ParseMode.MARKDOWN
             )
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"⚠️ فشل في إرسال إشعار للمستخدم {user_id}: {e}")
+        
+        user_name = f"{user['first_name'] or ''} {user['last_name'] or ''}".strip()
+        if not user_name:
+            user_name = f"المستخدم {user_id}"
         
         await update.message.reply_text(
             format_arabic_text(f"""
             ✅ **تم الشحن بنجاح!**
-
-            **المستخدم:** {user_name}
-            **المبلغ المضاف:** {amount} {CURRENCY}
-            **الرصيد الجديد:** {new_balance} {CURRENCY}
-
-            **تم إرسال إشعار للمستخدم.**
+            
+            **👤 المستخدم:** {user_name}
+            **🆔 الأيدي:** `{user_id}`
+            **💰 المبلغ:** {format_currency(amount)}
+            **💵 الرصيد السابق:** {format_currency(old_balance)}
+            **💳 الرصيد الجديد:** {format_currency(new_balance)}
+            **📅 التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+            
+            **📝 تم إرسال إشعار للمستخدم.**
             """),
-            reply_markup=admin_keyboard()
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=admin_panel_keyboard()
         )
         
         # مسح البيانات المؤقتة
-        context.user_data.clear()
+        context.user_data.pop('charge_user_id', None)
         
         return ConversationHandler.END
-    
+        
     except ValueError:
         await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إرسال مبلغ صحيح (أرقام فقط):"),
-            reply_markup=back_to_main_keyboard()
-        )
-        return ADD_POINTS
-
-@admin_only
-async def change_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تغيير أسعار الخدمات"""
-    current_prices = {
-        "عفوية": db.get_service_price("عفوية"),
-        "تلخيص": db.get_service_price("تلخيص"),
-        "أسئلة": db.get_service_price("أسئلة"),
-        "ملازم": db.get_service_price("ملازم")
-    }
-    
-    prices_text = "💰 **الأسعار الحالية:**\n\n"
-    for service, price in current_prices.items():
-        prices_text += f"• {service}: {price} {CURRENCY}\n"
-    
-    prices_text += f"\n**أدنى سعر مسموح:** {MIN_SERVICE_PRICE} {CURRENCY}"
-    prices_text += "\n\n**أرسل السعر الجديد بالصيغة:**\nاسم_الخدمة:المبلغ\nمثال: عفوية:1500"
-    
-    await update.message.reply_text(
-        format_arabic_text(prices_text),
-        reply_markup=back_to_main_keyboard()
-    )
-    
-    return SET_PRICE
-
-@admin_only
-async def set_new_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تعيين سعر جديد للخدمة"""
-    try:
-        input_text = update.message.text
-        if ':' not in input_text:
-            raise ValueError
-        
-        service_name, price_str = input_text.split(':', 1)
-        service_name = service_name.strip()
-        price = int(price_str.strip())
-        
-        # التحقق من صحة اسم الخدمة
-        valid_services = ["عفوية", "تلخيص", "أسئلة", "ملازم"]
-        if service_name not in valid_services:
-            await update.message.reply_text(
-                format_arabic_text(f"""
-                ⚠️ اسم الخدمة غير صحيح!
-                
-                **الخدمات المتاحة:**
-                {', '.join(valid_services)}
-                
-                أرسل بالصيغة الصحيحة:
-                """),
-                reply_markup=back_to_main_keyboard()
-            )
-            return SET_PRICE
-        
-        # التحقق من الحد الأدنى للسعر
-        if price < MIN_SERVICE_PRICE:
-            await update.message.reply_text(
-                format_arabic_text(f"⚠️ السعر يجب أن يكون على الأقل {MIN_SERVICE_PRICE} {CURRENCY}:"),
-                reply_markup=back_to_main_keyboard()
-            )
-            return SET_PRICE
-        
-        # تحديث السعر
-        db.update_service_price(service_name, price)
-        
-        await update.message.reply_text(
-            format_arabic_text(f"""
-            ✅ **تم تحديث السعر بنجاح!**
-
-            **الخدمة:** {service_name}
-            **السعر الجديد:** {price} {CURRENCY}
-
-            **سيتم تطبيق السعر الجديد على جميع المستخدمين.**
+            format_arabic_text("""
+            ⚠️ **قيمة غير صحيحة!**
+            
+            الرجاء إرسال رقم صحيح فقط:
             """),
-            reply_markup=admin_keyboard()
-        )
-        
-        return ConversationHandler.END
-    
-    except ValueError:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الصيغة غير صحيحة. الرجاء استخدام:\nاسم_الخدمة:المبلغ\nمثال: عفوية:1500"),
             reply_markup=back_to_main_keyboard()
         )
-        return SET_PRICE
+        return 'ADMIN_CHARGE_AMOUNT'
 
 @admin_only
-async def manage_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إدارة المواد التعليمية"""
-    keyboard = [
-        [
-            InlineKeyboardButton("📤 إضافة مادة", callback_data="add_material"),
-            InlineKeyboardButton("🗑️ حذف مادة", callback_data="delete_material")
-        ],
-        [
-            InlineKeyboardButton("📋 عرض المواد", callback_data="view_materials"),
-            InlineKeyboardButton("🔙 رجوع", callback_data="back_to_admin")
-        ]
-    ]
-    
-    await update.message.reply_text(
-        format_arabic_text("📚 **إدارة المواد التعليمية**\n\nاختر الإجراء المطلوب:"),
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-@admin_only
-async def add_material_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء إضافة مادة جديدة"""
+async def admin_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حظر مستخدم"""
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
-        text=format_arabic_text("📤 **إضافة مادة جديدة**\n\nأرسل اسم المادة:"),
-        reply_markup=back_to_main_keyboard()
-    )
+    user_id = int(query.data.split('_')[-1])
     
-    return MATERIAL_NAME
-
-@admin_only
-async def get_material_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على اسم المادة"""
-    context.user_data['material_name'] = update.message.text
+    # حظر المستخدم
+    success = db.ban_user(user_id)
     
-    await update.message.reply_text(
-        format_arabic_text("✅ تم حفظ اسم المادة.\n\nأرسل وصف المادة:"),
-        reply_markup=back_to_main_keyboard()
-    )
-    
-    return MATERIAL_DESC
-
-@admin_only
-async def get_material_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على وصف المادة"""
-    context.user_data['material_desc'] = update.message.text
-    
-    # عرض اختيار المرحلة
-    keyboard = [
-        ["المرحلة الأولى", "المرحلة الثانية"],
-        ["المرحلة الثالثة", "المرحلة الرابعة"],
-        ["🏠 العودة للقائمة الرئيسية"]
-    ]
-    
-    await update.message.reply_text(
-        format_arabic_text("✅ تم حفظ وصف المادة.\n\nاختر المرحلة:"),
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    )
-    
-    return MATERIAL_FILE
-
-@admin_only
-async def get_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الحصول على ملف المادة"""
-    stage = update.message.text
-    
-    # تحويل اسم المرحلة إلى كود
-    stage_map = {
-        "المرحلة الأولى": "first",
-        "المرحلة الثانية": "second", 
-        "المرحلة الثالثة": "third",
-        "المرحلة الرابعة": "fourth"
-    }
-    
-    stage_code = stage_map.get(stage)
-    
-    if not stage_code:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء اختيار مرحلة صحيحة:"),
-            reply_markup=back_to_main_keyboard()
-        )
-        return MATERIAL_FILE
-    
-    context.user_data['material_stage'] = stage_code
-    
-    await update.message.reply_text(
-        format_arabic_text("✅ تم حفظ المرحلة.\n\nأرسل ملف PDF للمادة:"),
-        reply_markup=back_to_main_keyboard()
-    )
-    
-    # هنا يجب الانتقال إلى حالة انتظار الملف
-    # لكن للتبسيط سنطلب من المشرف إرسال الملف في نفس الرسالة
-    
-    return ConversationHandler.END
-
-@admin_only
-async def handle_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة ملف المادة"""
-    if not update.message.document:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الرجاء إرسال ملف PDF:"),
-            reply_markup=back_to_main_keyboard()
-        )
-        return
-    
-    document = update.message.document
-    
-    if not document.file_name.endswith('.pdf'):
-        await update.message.reply_text(
-            format_arabic_text("⚠️ الملف يجب أن يكون بصيغة PDF:"),
-            reply_markup=back_to_main_keyboard()
-        )
-        return
-    
-    # إضافة المادة إلى قاعدة البيانات
-    material_id = db.add_material(
-        name=context.user_data.get('material_name'),
-        description=context.user_data.get('material_desc'),
-        file_id=document.file_id,
-        stage=context.user_data.get('material_stage'),
-        added_by=update.effective_user.id
-    )
-    
-    if material_id:
-        await update.message.reply_text(
-            format_arabic_text(f"""
-            ✅ **تم إضافة المادة بنجاح!**
-
-            **الاسم:** {context.user_data.get('material_name')}
-            **المرحلة:** {context.user_data.get('material_stage')}
-            **رقم المادة:** {material_id}
-
-            **سيتمكن المستخدمون من الوصول إليها فوراً.**
+    if success:
+        await query.answer("✅ تم حظر المستخدم!", show_alert=True)
+        
+        # تحديث الرسالة
+        user = db.get_user(user_id)
+        user_name = f"{user['first_name'] or ''} {user['last_name'] or ''}".strip()
+        if not user_name:
+            user_name = f"المستخدم {user_id}"
+        
+        await query.edit_message_text(
+            text=format_arabic_text(f"""
+            ✅ **تم حظر المستخدم بنجاح!**
+            
+            **👤 المستخدم:** {user_name}
+            **🆔 الأيدي:** `{user_id}`
+            **📅 التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+            
+            **📝 يمكنك إلغاء الحظر في أي وقت.**
             """),
-            reply_markup=admin_keyboard()
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ إلغاء حظر", callback_data=f"admin_unban_{user_id}")],
+                [InlineKeyboardButton("🔙 رجوع", callback_data="admin_users_management")]
+            ])
         )
     else:
-        await update.message.reply_text(
-            format_arabic_text("⚠️ حدث خطأ في إضافة المادة. الرجاء المحاولة لاحقاً."),
-            reply_markup=admin_keyboard()
-        )
-    
-    # مسح البيانات المؤقتة
-    context.user_data.clear()
+        await query.answer("❌ فشل في حظر المستخدم!", show_alert=True)
 
 @admin_only
-async def invite_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إعدادات برنامج الدعوة"""
-    current_bonus = db.get_invite_bonus()
-    
-    keyboard = [
-        [
-            InlineKeyboardButton(f"تغيير المكافأة ({current_bonus} دينار)", callback_data="change_bonus")
-        ],
-        [
-            InlineKeyboardButton("🔙 رجوع", callback_data="back_to_admin")
-        ]
-    ]
-    
-    await update.message.reply_text(
-        format_arabic_text(f"""
-        🎁 **إعدادات برنامج الدعوة**
-
-        **المكافأة الحالية:** {current_bonus} {CURRENCY}
-        
-        **اختر الإجراء المطلوب:**
-        """),
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    return INVITE_SETTINGS
-
-@admin_only
-async def change_invite_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تغيير مكافأة الدعوة"""
+async def admin_unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء حظر مستخدم"""
     query = update.callback_query
     await query.answer()
+    
+    user_id = int(query.data.split('_')[-1])
+    
+    # إلغاء حظر المستخدم
+    success = db.unban_user(user_id)
+    
+    if success:
+        await query.answer("✅ تم إلغاء حظر المستخدم!", show_alert=True)
+        
+        # تحديث الرسالة
+        user = db.get_user(user_id)
+        user_name = f"{user['first_name'] or ''} {user['last_name'] or ''}".strip()
+        if not user_name:
+            user_name = f"المستخدم {user_id}"
+        
+        await query.edit_message_text(
+            text=format_arabic_text(f"""
+            ✅ **تم إلغاء حظر المستخدم بنجاح!**
+            
+            **👤 المستخدم:** {user_name}
+            **🆔 الأيدي:** `{user_id}`
+            **📅 التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+            
+            **📝 يمكن إعادة حظره في أي وقت.**
+            """),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚫 حظر", callback_data=f"admin_ban_{user_id}")],
+                [InlineKeyboardButton("🔙 رجوع", callback_data="admin_users_management")]
+            ])
+        )
+    else:
+        await query.answer("❌ فشل في إلغاء حظر المستخدم!", show_alert=True)
+
+@admin_only
+async def admin_service_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إعدادات الخدمات"""
+    # الحصول على أسعار الخدمات
+    db.cursor.execute('SELECT * FROM service_prices WHERE is_active = 1')
+    services = db.cursor.fetchall()
+    
+    services_text = format_arabic_text("""
+    ⚙️ **إعدادات الخدمات والأسعار**
+    
+    **📝 قائمة الخدمات:**
+    """)
+    
+    keyboard = []
+    
+    for service in services:
+        service = dict(service)
+        services_text += f"\n• **{service['service_name']}**"
+        services_text += f"\n  الكود: `{service['service_code']}`"
+        services_text += f"\n  السعر الحالي: {format_currency(service['current_price'])}"
+        services_text += f"\n  المدى: {format_currency(service['min_price'])} - {format_currency(service['max_price'])}"
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                f"💰 {service['service_name']}",
+                callback_data=f"admin_service_{service['service_code']}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("➕ إضافة خدمة", callback_data="admin_add_service")])
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")])
+    
+    await update.message.reply_text(
+        services_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+@admin_only
+async def admin_edit_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تعديل خدمة"""
+    query = update.callback_query
+    await query.answer()
+    
+    service_code = query.data.split('_')[-1]
+    
+    # الحصول على تفاصيل الخدمة
+    db.cursor.execute('SELECT * FROM service_prices WHERE service_code = ?', (service_code,))
+    service = db.cursor.fetchone()
+    
+    if not service:
+        await query.answer("❌ الخدمة غير موجودة!", show_alert=True)
+        return
+    
+    service = dict(service)
+    
+    details_text = format_arabic_text(f"""
+    ⚙️ **تعديل الخدمة**
+    
+    **📌 الاسم:** {service['service_name']}
+    **🔤 الكود:** `{service['service_code']}`
+    
+    **💰 الأسعار:**
+    • السعر الحالي: {format_currency(service['current_price'])}
+    • السعر الأساسي: {format_currency(service['base_price'])}
+    • الحد الأدنى: {format_currency(service['min_price'])}
+    • الحد الأقصى: {format_currency(service['max_price'])}
+    
+    **📝 الوصف:** {service['description'] or 'لا يوجد وصف'}
+    **🔧 الحالة:** {'✅ نشطة' if service['is_active'] else '❌ معطلة'}
+    
+    **📅 آخر تحديث:** {format_date(service['updated_at'], 'full')}
+    """)
+    
+    await query.edit_message_text(
+        text=details_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("💰 تغيير السعر", callback_data=f"admin_change_price_{service_code}"),
+                InlineKeyboardButton("🔧 تغيير الحالة", callback_data=f"admin_toggle_service_{service_code}")
+            ],
+            [
+                InlineKeyboardButton("📝 تعديل الوصف", callback_data=f"admin_edit_desc_{service_code}"),
+                InlineKeyboardButton("🗑️ حذف الخدمة", callback_data=f"admin_delete_service_{service_code}")
+            ],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_service_settings")]
+        ])
+    )
+
+@admin_only
+async def admin_change_service_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تغيير سعر الخدمة"""
+    query = update.callback_query
+    await query.answer()
+    
+    service_code = query.data.split('_')[-1]
+    context.user_data['edit_service_code'] = service_code
     
     await query.edit_message_text(
         text=format_arabic_text(f"""
-        💰 **تغيير مكافأة الدعوة**
+        💰 **تغيير سعر الخدمة**
         
-        المكافأة الحالية: {db.get_invite_bonus()} {CURRENCY}
+        **🔤 كود الخدمة:** `{service_code}`
         
-        **أرسل المبلغ الجديد:**
+        **أرسل السعر الجديد:**
         """),
         reply_markup=back_to_main_keyboard()
     )
     
-    # هنا يجب الانتقال إلى حالة انتظار المبلغ الجديد
-    # لكن للتبسيط سنعود للوحة التحكم
+    return 'ADMIN_SET_PRICE'
+
+async def process_admin_set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة تعيين السعر الجديد"""
+    try:
+        new_price = int(update.message.text)
+        service_code = context.user_data.get('edit_service_code')
+        
+        if not service_code:
+            await update.message.reply_text(
+                format_arabic_text("""
+                ⚠️ **انتهت الجلسة!**
+                
+                الرجاء إعادة العملية من البداية.
+                """),
+                reply_markup=admin_panel_keyboard()
+            )
+            return ConversationHandler.END
+        
+        # تحديث السعر
+        success = db.update_service_price(service_code, new_price)
+        
+        if success:
+            # الحصول على تفاصيل الخدمة
+            db.cursor.execute('SELECT * FROM service_prices WHERE service_code = ?', (service_code,))
+            service = db.cursor.fetchone()
+            service = dict(service)
+            
+            await update.message.reply_text(
+                format_arabic_text(f"""
+                ✅ **تم تحديث السعر بنجاح!**
+                
+                **📌 الخدمة:** {service['service_name']}
+                **🔤 الكود:** `{service_code}`
+                **💰 السعر السابق:** {format_currency(service['current_price'])}
+                **💵 السعر الجديد:** {format_currency(new_price)}
+                **📅 التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+                
+                **📝 سيتم تطبيق السعر الجديد فوراً.**
+                """),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=admin_panel_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                format_arabic_text(f"""
+                ❌ **فشل في تحديث السعر!**
+                
+                **🔄 المحاولات:**
+                1. تأكد أن السعر ضمن المدى المسموح
+                2. تأكد من صحة كود الخدمة
+                3. حاول مرة أخرى
+                
+                **أرسل السعر الجديد:**
+                """),
+                reply_markup=back_to_main_keyboard()
+            )
+            return 'ADMIN_SET_PRICE'
+        
+        # مسح البيانات المؤقتة
+        context.user_data.pop('edit_service_code', None)
+        
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text(
+            format_arabic_text("""
+            ⚠️ **قيمة غير صحيحة!**
+            
+            الرجاء إرسال رقم صحيح فقط:
+            """),
+            reply_markup=back_to_main_keyboard()
+        )
+        return 'ADMIN_SET_PRICE'
 
 @admin_only
-async def maintenance_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تفعيل/تعطيل وضع الصيانة"""
-    current_mode = db.get_maintenance_mode()
-    new_mode = not current_mode
-    
-    db.set_maintenance_mode(new_mode)
-    
-    status = "مفعل" if new_mode else "معطل"
-    emoji = "🔧" if new_mode else "✅"
-    
-    await update.message.reply_text(
-        format_arabic_text(f"""
-        {emoji} **وضع الصيانة**
-        
-        **الحالة:** {status}
-        
-        **التأثير:**
-        • المستخدمون العاديون: {"لا يمكنهم استخدام البوت" if new_mode else "يمكنهم استخدام البوت"}
-        • المشرف: يمكنه استخدام البوت دائماً
-        """),
-        reply_markup=admin_keyboard()
-    )
-
-@admin_only
-async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء عملية البث للمستخدمين"""
+async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء عملية البث"""
     await update.message.reply_text(
         format_arabic_text("""
-        📢 **إرسال إشعار للمستخدمين**
+        📢 **البث للمستخدمين**
         
-        **أرسل الرسالة التي تريد بثها:**
-        (يمكن أن تحتوي على نص، صور، أو ملفات)
+        **📝 التعليمات:**
+        1. أرسل الرسالة التي تريد بثها
+        2. يمكن أن تحتوي على نص، صور، أو ملفات
+        3. سيتم إرسالها لجميع المستخدمين
+        
+        **⚡ المميزات:**
+        • إرسال لجميع المستخدمين
+        • دعم جميع أنواع المحتوى
+        • تتبع النتائج
+        • إحصاءات مفصلة
+        
+        **⚠️ تحذير:** هذه العملية قد تستغرق وقتاً
+        
+        **أرسل الرسالة الآن:**
         """),
         reply_markup=back_to_main_keyboard()
     )
     
-    return BROADCAST
+    return 'ADMIN_BROADCAST'
 
-@admin_only
-async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إرسال البث للمستخدمين"""
+async def process_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة البث"""
+    user_id = update.effective_user.id
+    
+    # الحصول على جميع المستخدمين
     users = db.get_all_users()
     total_users = len(users)
+    
+    # رسالة التقدم
+    progress_msg = await update.message.reply_text(
+        format_arabic_text(f"""
+        📤 **جاري إرسال البث...**
+        
+        **📊 الإحصائيات:**
+        • إجمالي المستخدمين: {format_number(total_users)}
+        • تم الإرسال: 0
+        • فشل الإرسال: 0
+        • النسبة: 0%
+        
+        **⏳ الوقت المقدر:** {total_users * 0.5:.0f} ثانية
+        """),
+        reply_markup=back_to_main_keyboard()
+    )
+    
     successful = 0
     failed = 0
     
-    # إرسال رسالة بدء البث
-    progress_msg = await update.message.reply_text(
-        format_arabic_text(f"📤 جاري الإرسال... 0/{total_users}")
-    )
-    
+    # إرسال الرسالة لكل مستخدم
     for i, user in enumerate(users):
         try:
-            # إعادة إرسال نفس المحتوى الذي أرسله المشرف
+            # محاولة إرسال الرسالة
             if update.message.text:
                 await context.bot.send_message(
                     user['user_id'],
                     format_arabic_text(f"""
-                    📢 **إشعار من إدارة البوت:**
+                    📢 **إشعار من إدارة البوت**
                     
                     {update.message.text}
                     
                     ---
-                    *هذا إشعار عام لجميع المستخدمين*
+                    *هذا إشعام عام لجميع المستخدمين*
                     """),
                     parse_mode=ParseMode.MARKDOWN
                 )
@@ -1987,199 +4201,302 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             successful += 1
             
-            # تحديث الرسالة كل 10 مستخدمين
+            # تحديث رسالة التقدم كل 10 مستخدمين
             if i % 10 == 0:
+                percentage = (i + 1) / total_users * 100
+                
                 await progress_msg.edit_text(
-                    format_arabic_text(f"📤 جاري الإرسال... {i+1}/{total_users}")
+                    format_arabic_text(f"""
+                    📤 **جاري إرسال البث...**
+                    
+                    **📊 الإحصائيات:**
+                    • إجمالي المستخدمين: {format_number(total_users)}
+                    • تم الإرسال: {format_number(i + 1)}
+                    • فشل الإرسال: {format_number(failed)}
+                    • النسبة: {percentage:.1f}%
+                    
+                    **⏳ الوقت المتبقي:** {(total_users - i - 1) * 0.5:.0f} ثانية
+                    """),
+                    reply_markup=back_to_main_keyboard()
                 )
             
-            await asyncio.sleep(0.1)  # تأخير لتجنب حظر تليجرام
-        
+            # تأخير لتجنب حظر تليجرام
+            await asyncio.sleep(0.1)
+            
         except Exception as e:
             failed += 1
-            logger.error(f"خطأ في إرسال للمستخدم {user['user_id']}: {e}")
+            logger.warning(f"⚠️ فشل في إرسال للمستخدم {user['user_id']}: {e}")
             continue
     
-    # إرسال نتيجة البث
+    # إرسال النتيجة النهائية
+    percentage = successful / total_users * 100
+    
+    result_text = format_arabic_text(f"""
+    ✅ **تم الانتهاء من البث!**
+    
+    **📊 النتائج النهائية:**
+    • إجمالي المستخدمين: {format_number(total_users)}
+    • تم الإرسال بنجاح: {format_number(successful)}
+    • فشل الإرسال: {format_number(failed)}
+    • نسبة النجاح: {percentage:.1f}%
+    
+    **⏱️ وقت التنفيذ:** {total_users * 0.5:.0f} ثانية
+    **📅 التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+    
+    **📝 ملاحظات:**
+    1. المستخدمون المحظورون لن تصلهم الرسائل
+    2. المستخدمون الذين حذفوا المحادثة لن تصلهم الرسائل
+    3. يمكن تكرار العملية في أي وقت
+    
+    **📞 للاستفسارات:** {db.get_setting('support_username') or ADMIN_USERNAME}
+    """)
+    
     await progress_msg.edit_text(
-        format_arabic_text(f"""
-        ✅ **تم الانتهاء من البث!**
-        
-        **الإحصائيات:**
-        • إجمالي المستخدمين: {total_users}
-        • تم الإرسال بنجاح: {successful}
-        • فشل الإرسال: {failed}
-        • النسبة: {(successful/total_users*100):.1f}%
-        
-        **ملاحظة:** المستخدمون المحظورون أو الذين حذفوا المحادثة لن تصلهم الرسائل.
-        """),
-        reply_markup=admin_keyboard()
+        result_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=admin_panel_keyboard()
     )
     
     return ConversationHandler.END
 
 # ============================================
-# معالجات استدعاء الأزرار
+# معالجات الأزرار
 # ============================================
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة ضغطات الأزرار"""
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج أزرار الاستدعاء"""
     query = update.callback_query
     await query.answer()
     
     data = query.data
     
-    if data.startswith("ban_"):
-        # حظر مستخدم
-        user_id = int(data.split("_")[1])
-        db.ban_user(user_id)
-        
+    if data == "main_menu":
         await query.edit_message_text(
-            text=format_arabic_text(f"✅ تم حظر المستخدم {user_id}"),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="back_to_admin")]])
+            text=format_arabic_text("🏠 **القائمة الرئيسية**"),
+            reply_markup=main_menu_keyboard(query.from_user.id)
         )
     
-    elif data.startswith("charge_"):
-        # شحن رصيد مستخدم
-        user_id = int(data.split("_")[1])
-        context.user_data['charge_user_id'] = user_id
-        
-        await query.edit_message_text(
-            text=format_arabic_text(f"💰 شحن رصيد للمستخدم {user_id}\n\nأرسل المبلغ:"),
-            reply_markup=back_to_main_keyboard()
-        )
-        
-        return ADD_POINTS
+    elif data == "admin_back":
+        await admin_panel_command(update, context)
     
-    elif data == "back_to_admin":
-        # العودة للوحة التحكم
-        await query.edit_message_text(
-            text=format_arabic_text("👑 **لوحة تحكم المشرف**\n\nاختر القسم المطلوب:"),
-            reply_markup=admin_keyboard()
-        )
+    elif data.startswith("admin_view_user_"):
+        await admin_view_user(update, context)
     
-    elif data == "add_material":
-        # إضافة مادة
-        await add_material_start(update, context)
+    elif data.startswith("admin_charge_"):
+        await admin_charge_user_start(update, context)
     
-    elif data == "view_materials":
-        # عرض المواد
-        materials = db.get_materials()
-        
-        if not materials:
-            await query.edit_message_text(
-                text=format_arabic_text("📭 لا توجد مواد متاحة."),
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="back_to_admin")]])
-            )
-            return
-        
-        materials_text = "📚 **المواد المتاحة:**\n\n"
-        for i, material in enumerate(materials[:15], 1):
-            materials_text += f"{i}. {material['name']} - {material['stage']}\n"
-        
-        await query.edit_message_text(
-            text=format_arabic_text(materials_text),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="back_to_admin")]])
-        )
+    elif data.startswith("admin_ban_"):
+        await admin_ban_user(update, context)
+    
+    elif data.startswith("admin_unban_"):
+        await admin_unban_user(update, context)
+    
+    elif data == "admin_service_settings":
+        await admin_service_settings(update, context)
+    
+    elif data.startswith("admin_service_"):
+        await admin_edit_service(update, context)
+    
+    elif data.startswith("admin_change_price_"):
+        await admin_change_service_price(update, context)
+    
+    elif data == "materials_library":
+        await materials_library(update, context)
+    
+    elif data == "materials_by_stage":
+        await materials_by_stage(update, context)
+    
+    elif data.startswith("stage_"):
+        await show_stage_materials(update, context)
+    
+    elif data.startswith("material_"):
+        await show_material_details(update, context)
+    
+    elif data.startswith("download_"):
+        await download_material(update, context)
+    
+    else:
+        await query.answer("❌ هذا الزر غير مدعوم!", show_alert=True)
 
 # ============================================
 # معالجات الرسائل العامة
 # ============================================
 
+@check_maintenance
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة الرسائل النصية"""
+    if not update.message or not update.message.text:
+        return
+    
+    user_id = update.effective_user.id
     message_text = update.message.text
     
-    if message_text == "📊 حساب درجة العفوية":
-        return await calculate_exemption(update, context)
-    
-    elif message_text == "📄 تلخيص الملازم بالذكاء الاصطناعي":
-        return await summarize_pdf(update, context)
-    
-    elif message_text == "❓ أسئلة وأجوبة بالذكاء الاصطناعي":
-        return await ask_question(update, context)
-    
-    elif message_text == "📚 ملازمي ومرشحاتي":
-        return await show_materials(update, context)
-    
-    elif message_text == "💰 رصيدي":
-        return await balance(update, context)
-    
-    elif message_text == "📤 دعوة أصدقاء":
-        return await invite_info(update, context)
-    
-    elif message_text == "ℹ️ معلومات":
-        return await info(update, context)
-    
-    elif message_text == "👨‍💻 الدعم الفني":
-        return await support(update, context)
-    
-    elif message_text == "🏠 العودة للقائمة الرئيسية":
+    # الأوامر من لوحة المفاتيح
+    if message_text == "🏠 القائمة الرئيسية":
         await update.message.reply_text(
             format_arabic_text("🏠 **القائمة الرئيسية**"),
-            reply_markup=main_menu_keyboard()
+            reply_markup=main_menu_keyboard(user_id)
         )
-        return ConversationHandler.END
     
-    elif message_text == "📊 إحصائيات":
-        return await show_stats(update, context)
+    elif message_text == "📊 حساب درجة العفوية":
+        await exemption_calculation(update, context)
+    
+    elif message_text == "📄 تلخيص الملازم":
+        await pdf_summary_start(update, context)
+    
+    elif message_text == "❓ أسئلة وأجوبة":
+        await qa_ai_start(update, context)
+    
+    elif message_text == "📚 ملازمي ومرشحاتي":
+        await materials_library(update, context)
+    
+    elif message_text == "💰 رصيدي":
+        await balance_command(update, context)
+    
+    elif message_text == "📤 دعوة أصدقاء":
+        await invite_command(update, context)
+    
+    elif message_text == "ℹ️ معلومات البوت":
+        await info_command(update, context)
+    
+    elif message_text == "👨‍💻 الدعم الفني":
+        await support_command(update, context)
+    
+    elif message_text == "👑 لوحة التحكم":
+        await admin_panel_command(update, context)
+    
+    # أوامر لوحة التحكم
+    elif message_text == "📊 الإحصائيات":
+        await admin_statistics(update, context)
     
     elif message_text == "👥 إدارة المستخدمين":
-        return await manage_users(update, context)
+        await admin_users_management(update, context)
     
-    elif message_text == "💰 شحن رصيد":
-        return await charge_user_start(update, context)
-    
-    elif message_text == "⚙️ تغيير الأسعار":
-        return await change_prices(update, context)
-    
-    elif message_text == "📚 إدارة المواد":
-        return await manage_materials(update, context)
-    
-    elif message_text == "🎁 إعدادات الدعوة":
-        return await invite_settings(update, context)
-    
-    elif message_text == "🔧 وضع الصيانة":
-        return await maintenance_mode(update, context)
-    
-    elif message_text == "📢 إرسال إشعار":
-        return await broadcast_message(update, context)
-    
-    elif message_text in ["المرحلة الأولى", "المرحلة الثانية", "المرحلة الثالثة", "المرحلة الرابعة"]:
-        return await handle_stage_selection(update, context)
-    
-    else:
-        # إذا كان المستخدم مشرفاً ورسالته قد تكون رداً على عملية ما
-        if update.effective_user.id == ADMIN_ID:
-            # التحقق من الحالات النشطة
-            if 'charge_user_id' in context.user_data:
-                return await add_points(update, context)
-            elif 'material_name' in context.user_data:
-                if 'material_desc' not in context.user_data:
-                    return await get_material_desc(update, context)
-                elif 'material_stage' not in context.user_data:
-                    context.user_data['material_stage'] = message_text
-                    await update.message.reply_text(
-                        format_arabic_text("✅ تم حفظ المرحلة.\n\nأرسل ملف PDF للمادة:"),
-                        reply_markup=back_to_main_keyboard()
-                    )
-                    return
-        
-        # إذا لم تكن أي من الحالات السابقة
+    elif message_text == "💰 الشحن والإيرادات":
         await update.message.reply_text(
             format_arabic_text("""
-            🤔 لم أفهم طلبك!
+            💰 **الشحن والإيرادات**
             
-            **الرجاء استخدام الأزرار الموجودة في القائمة الرئيسية.**
+            **اختر الإجراء المطلوب:**
             """),
-            reply_markup=main_menu_keyboard()
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("📊 الإيرادات", callback_data="admin_revenue_stats"),
+                    InlineKeyboardButton("💳 شحن يدوي", callback_data="admin_manual_charge")
+                ],
+                [
+                    InlineKeyboardButton("📈 الرسوم البيانية", callback_data="admin_charts"),
+                    InlineKeyboardButton("📤 تصدير البيانات", callback_data="admin_export_data")
+                ],
+                [InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]
+            ])
+        )
+    
+    elif message_text == "⚙️ إعدادات الخدمات":
+        await admin_service_settings(update, context)
+    
+    elif message_text == "📚 إدارة المواد":
+        await update.message.reply_text(
+            format_arabic_text("""
+            📚 **إدارة المواد التعليمية**
+            
+            **اختر الإجراء المطلوب:**
+            """),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("➕ إضافة مادة", callback_data="admin_add_material"),
+                    InlineKeyboardButton("🗑️ حذف مادة", callback_data="admin_delete_material")
+                ],
+                [
+                    InlineKeyboardButton("📋 عرض جميع المواد", callback_data="admin_list_materials"),
+                    InlineKeyboardButton("📊 إحصائيات المواد", callback_data="admin_materials_stats")
+                ],
+                [InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]
+            ])
+        )
+    
+    elif message_text == "🎁 برنامج الدعوة":
+        await update.message.reply_text(
+            format_arabic_text(f"""
+            🎁 **برنامج الدعوة**
+            
+            **📊 الإحصائيات الحالية:**
+            • مكافأة الدعوة: {format_currency(int(db.get_setting('invite_bonus') or 500))}
+            • إجمالي الإحالات: {sum(user['referral_count'] for user in db.get_all_users())}
+            
+            **اختر الإجراء المطلوب:**
+            """),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("💰 تغيير المكافأة", callback_data="admin_change_bonus"),
+                    InlineKeyboardButton("📊 إحصائيات الإحالات", callback_data="admin_referral_stats")
+                ],
+                [InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")]
+            ])
+        )
+    
+    elif message_text == "🔧 إعدادات البوت":
+        settings = db.get_all_settings()
+        
+        settings_text = format_arabic_text("""
+        🔧 **إعدادات البوت**
+        
+        **📝 قائمة الإعدادات:**
+        """)
+        
+        for key, value in settings.items():
+            if len(str(value)) < 50:  # عرض فقط الإعدادات القصيرة
+                settings_text += f"\n• **{key}:** {value}"
+        
+        settings_text += f"""
+        
+        **📅 آخر تحديث:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        
+        **🔍 للبحث عن إعداد محدد، أرسل:** `/setting اسم_الإعداد`
+        **✏️ لتعديل إعداد، أرسل:** `/set اسم_الإعداد القيمة`
+        """
+        
+        await update.message.reply_text(
+            settings_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=admin_panel_keyboard()
+        )
+    
+    elif message_text == "📢 البث للمستخدمين":
+        await admin_broadcast_start(update, context)
+    
+    else:
+        # إذا لم يكن الأمر معروفاً
+        await update.message.reply_text(
+            format_arabic_text("""
+            🤔 **لم أفهم طلبك!**
+            
+            **📝 التعليمات:**
+            1. استخدم الأزرار في القائمة الرئيسية
+            2. أو اكتب الأمر مباشرة
+            
+            **⚡ الأوامر السريعة:**
+            • `/start` - بدء استخدام البوت
+            • `/balance` - عرض الرصيد
+            • `/invite` - معلومات الدعوة
+            • `/help` - المساعدة
+            
+            **📞 للاستفسارات:** {support}
+            """.format(support=db.get_setting('support_username') or ADMIN_USERNAME)),
+            reply_markup=main_menu_keyboard(user_id)
         )
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إلغاء المحادثة الحالية"""
+    user_id = update.effective_user.id
+    
     await update.message.reply_text(
-        format_arabic_text("تم الإلغاء. العودة للقائمة الرئيسية."),
-        reply_markup=main_menu_keyboard()
+        format_arabic_text("""
+        ❌ **تم الإلغاء**
+        
+        **🏠 العودة للقائمة الرئيسية**
+        """),
+        reply_markup=main_menu_keyboard(user_id)
     )
     
     # مسح البيانات المؤقتة
@@ -2188,123 +4505,320 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
+# الأوامر الإضافية
+# ============================================
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض رسالة المساعدة"""
+    user_id = update.effective_user.id
+    
+    help_text = format_arabic_text(f"""
+    🆘 **مركز المساعدة - {BOT_NAME}**
+    
+    **📝 الأوامر الأساسية:**
+    • `/start` - بدء استخدام البوت
+    • `/balance` - عرض الرصيد والعمليات
+    • `/invite` - برنامج دعوة الأصدقاء
+    • `/info` - معلومات عن البوت
+    • `/support` - الاتصال بالدعم الفني
+    • `/help` - عرض هذه الرسالة
+    
+    **🎯 الخدمات المتاحة:**
+    1. **حساب درجة العفوية** - حساب المعدل ومعرفة الإعفاء
+    2. **تلخيص الملازم** - تلخيص الكتب بالذكاء الاصطناعي
+    3. **أسئلة وأجوبة** - الإجابة على أسئلتك التعليمية
+    4. **ملازمي ومرشحاتي** - مكتبة المواد التعليمية
+    
+    **💰 نظام الدفع:**
+    • جميع الخدمات مدفوعة
+    • العملة: {CURRENCY_NAME}
+    • أقل سعر: {format_currency(MINIMUM_SERVICE_PRICE)}
+    • طرق الشحن: الدعم الفني أو دعوة الأصدقاء
+    
+    **📞 الدعم الفني:**
+    • اليوزر: {db.get_setting('support_username') or ADMIN_USERNAME}
+    • الوقت: 9:00 ص - 5:00 م (توقيت بغداد)
+    • الاستجابة: خلال 24 ساعة
+    
+    **🔧 المشاكل الشائعة:**
+    1. **الرصيد غير كاف** - شحن عبر الدعم أو الدعوة
+    2. **ملف PDF لا يعمل** - تأكد من صحة الملف
+    3. **لا توجد إجابة** - حاول صياغة السؤال بشكل أوضح
+    4. **مشاكل تقنية** - تواصل مع الدعم الفني
+    
+    **📱 كيفية الاستخدام:**
+    1. ابدأ بالأمر `/start`
+    2. استخدم الأزرار للتنقل
+    3. اختر الخدمة المطلوبة
+    4. اتبع التعليمات
+    
+    **⚡ نصائح سريعة:**
+    • احفظ رقم مستخدمك: `{user_id}`
+    • استخدم رابط الدعوة لكسب المال
+    • اقرأ التعليمات قبل كل خدمة
+    • بلغ عن المشاكل فوراً
+    
+    **📚 للاستفسارات التعليمية:** استخدم خدمة الأسئلة والأجوبة
+    **💼 للاستفسارات المالية:** تواصل مع الدعم الفني
+    **🔨 للإبلاغ عن أخطاء:** أرسل تفاصيل المشكلة للدعم
+    
+    **شكراً لاستخدامك {BOT_NAME}!** 🌟
+    """)
+    
+    await update.message.reply_text(
+        help_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=main_menu_keyboard(user_id)
+    )
+
+# ============================================
+# وظائف الخلفية
+# ============================================
+
+async def cleanup_job(context: ContextTypes.DEFAULT_TYPE):
+    """وظيفة تنظيف الملفات المؤقتة"""
+    try:
+        # تنظيف الملفات المؤقتة
+        pdf_system.cleanup_temp_files(hours_old=24)
+        
+        # تنظيف سجل الأخطاء القديمة
+        cutoff_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        db.cursor.execute('DELETE FROM error_logs WHERE DATE(created_at) < ?', (cutoff_date,))
+        db.connection.commit()
+        
+        logger.info("✅ تم تنظيف الملفات المؤقتة والسجلات القديمة")
+    except Exception as e:
+        logger.error(f"❌ خطأ في وظيفة التنظيف: {e}")
+
+async def backup_job(context: ContextTypes.DEFAULT_TYPE):
+    """وظيفة النسخ الاحتياطي"""
+    try:
+        backup_file = db.create_backup()
+        if backup_file:
+            logger.info(f"✅ تم إنشاء نسخة احتياطية: {backup_file}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في وظيفة النسخ الاحتياطي: {e}")
+
+async def stats_job(context: ContextTypes.DEFAULT_TYPE):
+    """وظيفة تحديث الإحصائيات"""
+    try:
+        # تحديث إحصائيات اليوم
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        db.cursor.execute('''
+            INSERT OR REPLACE INTO statistics (stat_date, total_users, new_users, active_users)
+            SELECT 
+                DATE('now'),
+                (SELECT COUNT(*) FROM users),
+                (SELECT COUNT(*) FROM users WHERE DATE(join_date) = DATE('now')),
+                (SELECT COUNT(*) FROM users WHERE DATE(last_active) = DATE('now'))
+        ''')
+        
+        db.connection.commit()
+        logger.debug("✅ تم تحديث الإحصائيات اليومية")
+    except Exception as e:
+        logger.error(f"❌ خطأ في وظيفة الإحصائيات: {e}")
+
+# ============================================
 # الدالة الرئيسية لتشغيل البوت
 # ============================================
 
 def main():
     """الدالة الرئيسية لتشغيل البوت"""
     
-    # إعداد الخطوط العربية
-    setup_arabic_fonts()
+    # التحقق من وجود التوكن
+    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "8481569753:AAHTdbWwu0BHmoo_iHPsye8RkTptWzfiQWU":
+        logger.error("❌ لم تقم بتعيين توكن البوت! الرجاء تعديل ملف الكود وإضافة التوكن الصحيح.")
+        return
+    
+    # التحقق من وجود مفتاح API
+    if not GEMINI_API_KEY or GEMINI_API_KEY == "AIzaSyAqlug21bw_eI60ocUtc1Z76NhEUc-zuzY":
+        logger.error("❌ لم تقم بتعيين مفتاح API للذكاء الاصطناعي! الرجاء تعديل ملف الكود.")
+        return
     
     # إنشاء التطبيق
-    application = Application.builder().token(TOKEN).build()
+    application = ApplicationBuilder() \
+        .token(TELEGRAM_BOT_TOKEN) \
+        .concurrent_updates(True) \
+        .pool_timeout(30) \
+        .connect_timeout(30) \
+        .read_timeout(30) \
+        .write_timeout(30) \
+        .build()
     
-    # إضافة معالج الأوامر
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("admin", admin_panel))
+    # ============ محادثات الخدمات ============
     
     # محادثة حساب درجة العفوية
-    calc_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^📊 حساب درجة العفوية$"), calculate_exemption)],
+    exemption_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^📊 حساب درجة العفوية$"), exemption_calculation)],
         states={
-            COURSE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course1)],
-            COURSE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course2)],
-            COURSE3: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course3)],
+            'WAITING_COURSE1': [MessageHandler(filters.TEXT & ~filters.COMMAND, process_course1)],
+            'WAITING_COURSE2': [MessageHandler(filters.TEXT & ~filters.COMMAND, process_course2)],
+            'WAITING_COURSE3': [MessageHandler(filters.TEXT & ~filters.COMMAND, process_course3)]
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^❌ إلغاء$"), cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(calc_conv_handler)
+    application.add_handler(exemption_conv)
     
     # محادثة تلخيص PDF
-    pdf_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^📄 تلخيص الملازم بالذكاء الاصطناعي$"), summarize_pdf)],
+    pdf_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^📄 تلخيص الملازم$"), pdf_summary_start)],
         states={
-            WAITING_PDF: [
-                MessageHandler(filters.Document.PDF, process_pdf),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, lambda u, c: u.message.reply_text("⚠️ الرجاء إرسال ملف PDF:"))
-            ],
+            'WAITING_PDF': [
+                MessageHandler(filters.Document.PDF, process_pdf_file),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, 
+                             lambda u, c: u.message.reply_text("⚠️ الرجاء إرسال ملف PDF فقط!"))
+            ]
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^❌ إلغاء$"), cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(pdf_conv_handler)
+    application.add_handler(pdf_conv)
     
     # محادثة الأسئلة والأجوبة
-    qa_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^❓ أسئلة وأجوبة بالذكاء الاصطناعي$"), ask_question)],
+    qa_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^❓ أسئلة وأجوبة$"), qa_ai_start)],
         states={
-            WAITING_ANSWER: [
-                MessageHandler(filters.TEXT | filters.PHOTO, answer_question)
-            ],
+            'WAITING_QUESTION': [
+                MessageHandler(filters.TEXT | filters.PHOTO, process_question)
+            ]
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^❌ إلغاء$"), cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(qa_conv_handler)
+    application.add_handler(qa_conv)
     
-    # محادثة شحن الرصيد من قبل المشرف
-    charge_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^💰 شحن رصيد$"), charge_user_start)],
+    # محادثة بحث المشرف
+    admin_search_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_search_user, pattern="^admin_search_user$")],
         states={
-            CHARGE_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_user_id_for_charge)],
-            ADD_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_points)],
+            'ADMIN_SEARCH_USER': [MessageHandler(filters.TEXT & ~filters.COMMAND, process_admin_search)]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        map_to_parent={ConversationHandler.END: ADMIN_PANEL}
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(charge_conv_handler)
+    application.add_handler(admin_search_conv)
     
-    # محادثة تغيير الأسعار
-    price_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^⚙️ تغيير الأسعار$"), change_prices)],
+    # محادثة شحن المشرف
+    admin_charge_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_charge_user_start, pattern="^admin_charge_\\d+$")],
         states={
-            SET_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_new_price)],
+            'ADMIN_CHARGE_AMOUNT': [MessageHandler(filters.TEXT & ~filters.COMMAND, process_admin_charge)]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        map_to_parent={ConversationHandler.END: ADMIN_PANEL}
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(price_conv_handler)
+    application.add_handler(admin_charge_conv)
     
-    # محادثة إضافة المواد
-    material_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(add_material_start, pattern="^add_material$")],
+    # محادثة تغيير سعر الخدمة
+    admin_price_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_change_service_price, pattern="^admin_change_price_")],
         states={
-            MATERIAL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_material_name)],
-            MATERIAL_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_material_desc)],
-            MATERIAL_FILE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_material_file)],
+            'ADMIN_SET_PRICE': [MessageHandler(filters.TEXT & ~filters.COMMAND, process_admin_set_price)]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        map_to_parent={ConversationHandler.END: ADMIN_PANEL}
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(material_conv_handler)
+    application.add_handler(admin_price_conv)
     
     # محادثة البث للمستخدمين
-    broadcast_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^📢 إرسال إشعار$"), broadcast_message)],
+    admin_broadcast_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^📢 البث للمستخدمين$"), admin_broadcast_start)],
         states={
-            BROADCAST: [MessageHandler(filters.TEXT | filters.PHOTO | filters.Document.ALL, send_broadcast)],
+            'ADMIN_BROADCAST': [
+                MessageHandler(filters.TEXT | filters.PHOTO | filters.Document.ALL, process_admin_broadcast)
+            ]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        map_to_parent={ConversationHandler.END: ADMIN_PANEL}
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^🏠 القائمة الرئيسية$"), cancel_conversation)
+        ]
     )
-    application.add_handler(broadcast_conv_handler)
+    application.add_handler(admin_broadcast_conv)
+    
+    # ============ معالجات الأوامر ============
+    
+    # الأوامر الأساسية
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(CommandHandler("invite", invite_command))
+    application.add_handler(CommandHandler("info", info_command))
+    application.add_handler(CommandHandler("support", support_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("admin", admin_panel_command))
     
     # معالج أزرار الاستدعاء
-    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(CallbackQueryHandler(button_handler))
     
-    # معالج الرسائل العامة
+    # معالج الرسائل النصية
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # معالج الملفات (لإضافة المواد)
-    application.add_handler(MessageHandler(filters.Document.PDF, handle_material_file))
+    # ============ وظائف الخلفية ============
     
-    # بدء البوت
-    print("🚀 بدأ تشغيل البوت...")
-    print(f"🤖 اسم البوت: {BOT_NAME}")
-    print(f"👑 أيدي المشرف: {ADMIN_ID}")
-    print(f"🔗 يوزر البوت: {BOT_USERNAME}")
-    print("⏳ جاري الاستعداد...")
+    # إضافة وظائف مجدولة
+    job_queue = application.job_queue
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    if job_queue:
+        # تنظيف الملفات المؤقتة كل ساعة
+        job_queue.run_repeating(cleanup_job, interval=3600, first=10)
+        
+        # النسخ الاحتياطي كل 6 ساعات
+        job_queue.run_repeating(backup_job, interval=21600, first=30)
+        
+        # تحديث الإحصائيات كل ساعة
+        job_queue.run_repeating(stats_job, interval=3600, first=60)
+    
+    # ============ تشغيل البوت ============
+    
+    # معلومات بدء التشغيل
+    logger.info("=" * 50)
+    logger.info(f"🚀 بدأ تشغيل بوت {BOT_NAME}")
+    logger.info(f"🤖 يوزر البوت: {BOT_USERNAME}")
+    logger.info(f"👑 أيدي المشرف: {ADMIN_USER_ID}")
+    logger.info(f"👤 يوزر المشرف: {ADMIN_USERNAME}")
+    logger.info(f"💰 العملة: {CURRENCY_NAME}")
+    logger.info(f"💳 أقل سعر خدمة: {format_currency(MINIMUM_SERVICE_PRICE)}")
+    logger.info(f"📊 عدد المستخدمين: {db.get_user_count()}")
+    logger.info("=" * 50)
+    
+    # تشغيل البوت
+    application.run_polling(
+        poll_interval=1.0,
+        timeout=30,
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+    )
 
 if __name__ == '__main__':
-    main()
+    # إنشاء المجلدات المطلوبة
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    os.makedirs(LOG_DIR, exist_ok=True)
+    
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("⏹️ تم إيقاف البوت بواسطة المستخدم")
+    except Exception as e:
+        logger.error(f"❌ خطأ غير متوقع: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # إغلاق قاعدة البيانات
+        db.close()
+        logger.info("🔒 تم إغلاق جميع الاتصالات")
