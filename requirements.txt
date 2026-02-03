@@ -7,3 +7,5 @@ reportlab==4.0.4
 arabic-reshaper==3.0.0
 python-bidi==0.4.2
 requests==2.31.0
+aiohttp==3.9.1
+numpy==1.24.3
