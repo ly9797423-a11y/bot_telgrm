@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 بوت تليجرام "يلا نتعلم"
-الإصدار: 2.0
+الإصدار: 3.0
 المطور: Allawi04@
+التوكن الجديد: 8481569753:AAH3alhJ0hcHldht-PxV7j8TzBlRsMqAqGI
 تاريخ الإصدار: 2024
 """
 
@@ -42,12 +43,14 @@ try:
         Update, InlineKeyboardButton, InlineKeyboardMarkup, 
         ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
         Message, Chat, User, CallbackQuery, ChatMember,
-        InputFile, InputMediaDocument, Document, PhotoSize
+        InputFile, InputMediaDocument, Document, PhotoSize,
+        BotCommand, BotCommandScopeDefault
     )
     from telegram.ext import (
         Application, ApplicationBuilder, CommandHandler, MessageHandler,
         CallbackQueryHandler, ContextTypes, ConversationHandler,
-        filters, PicklePersistence, JobQueue, TypeHandler
+        filters, PicklePersistence, JobQueue, TypeHandler,
+        CallbackContext
     )
     from telegram.constants import (
         ParseMode, ChatAction, ChatType, MessageLimit,
@@ -140,14 +143,14 @@ class Constants:
     """فئة للثوابت والإعدادات"""
     
     # إعدادات البوت
-    TOKEN = "8481569753:AAH3alhJ0hcHldht-PxV7j8TzBlRsMqAqGI"
+    TOKEN = "8481569753:AAH3alhJ0hcHldht-PxV7j8TzBlRsMqAqGI"  # التوكن الجديد
     BOT_USERNAME = "@FC4Xbot"
     ADMIN_ID = 6130994941
     SUPPORT_USERNAME = "Allawi04@"
     GEMINI_API_KEY = "AIzaSyAqlug21bw_eI60ocUtc1Z76NhEUc-zuzY"
     
     # مسارات الملفات
-    DB_NAME = "yalla_nt3lem.db"
+    DB_NAME = "yalla_nt3lem_v3.db"
     LOGS_DIR = "logs"
     FONTS_DIR = "fonts"
     MATERIALS_DIR = "materials"
@@ -301,128 +304,18 @@ class Constants:
         'musical_keyboard': '🎹',
         'trumpet': '🎺',
         'violin': '🎻',
-        'drum': '🥁',
-        'iphone': '📱',
-        'calling': '📲',
-        'phone2': '☎️',
-        'telephone2': '📞',
-        'pager2': '📟',
-        'fax2': '📠',
-        'battery2': '🔋',
-        'electric_plug2': '🔌',
-        'computer2': '💻',
-        'desktop_computer': '🖥️',
-        'printer2': '🖨️',
-        'keyboard': '⌨️',
-        'computer_mouse': '🖱️',
-        'trackball': '🖲️',
-        'minidisc': '💽',
-        'floppy_disk': '💾',
-        'cd': '💿',
-        'dvd': '📀',
-        'abacus': '🧮',
-        'movie_camera2': '🎥',
-        'film_strip': '🎞️',
-        'film_projector2': '📽️',
-        'clapper': '🎬',
-        'tv2': '📺',
-        'camera': '📷',
-        'camera_flash': '📸',
-        'video_camera2': '📹',
-        'vhs': '📼',
-        'mag': '🔍',
-        'mag_right': '🔎',
-        'candle': '🕯️',
-        'bulb2': '💡',
-        'flashlight': '🔦',
-        'izakaya_lantern': '🏮',
-        'notebook': '📓',
-        'closed_book': '📕',
-        'book2': '📖',
-        'green_book': '📗',
-        'blue_book': '📘',
-        'orange_book': '📙',
-        'books': '📚',
-        'notebook2': '📓',
-        'ledger': '📒',
-        'page_with_curl': '📃',
-        'scroll': '📜',
-        'page_facing_up': '📄',
-        'newspaper2': '📰',
-        'newspaper_roll': '🗞️',
-        'bookmark_tabs': '📑',
-        'bookmark2': '🔖',
-        'label2': '🏷️',
-        'moneybag': '💰',
-        'yen': '💴',
-        'dollar': '💵',
-        'euro': '💶',
-        'pound': '💷',
-        'money_with_wings': '💸',
-        'credit_card2': '💳',
-        'receipt2': '🧾',
-        'chart2': '💹',
-        'currency_exchange': '💱',
-        'heavy_dollar_sign': '💲',
-        'email': '✉️',
-        'e-mail': '📧',
-        'incoming_envelope2': '📨',
-        'envelope_with_arrow': '📩',
-        'outbox_tray': '📤',
-        'inbox_tray': '📥',
-        'package2': '📦',
-        'mailbox2': '📫',
-        'mailbox_closed': '📪',
-        'mailbox_with_mail': '📬',
-        'mailbox_with_no_mail': '📭',
-        'postbox2': '📮',
-        'ballot_box': '🗳️',
-        'pencil3': '✏️',
-        'black_nib2': '✒️',
-        'fountain_pen2': '🖋️',
-        'pen2': '🖊️',
-        'paintbrush3': '🖌️',
-        'crayon2': '🖍️',
-        'memo2': '📝',
-        'briefcase2': '💼',
-        'file_folder2': '📁',
-        'open_file_folder2': '📂',
-        'card_index2': '📇',
-        'date2': '📅',
-        'calendar3': '📆',
-        'spiral_calendar2': '🗓️',
-        'card_index_dividers2': '🗂️',
-        'printer3': '🖨️',
-        'fax3': '📠',
-        'tv3': '📺',
-        'radio3': '📻',
-        'video_camera3': '📹',
-        'movie_camera3': '🎥',
-        'film_projector3': '📽️',
-        'telephone3': '☎️',
-        'telephone_receiver2': '📞',
-        'pager3': '📟',
-        'satellite_antenna2': '📡',
-        'loudspeaker2': '📢',
-        'megaphone3': '📣',
-        'bell3': '🔔',
-        'no_bell2': '🔕',
-        'musical_score2': '🎼',
-        'musical_note2': '🎵',
-        'notes2': '🎶',
-        'studio_microphone2': '🎙️',
-        'level_slider2': '🎚️',
-        'control_knobs2': '🎛️',
-        'microphone2': '🎤',
-        'headphone2': '🎧',
-        'radio4': '📻',
-        'saxophone2': '🎷',
-        'guitar2': '🎸',
-        'musical_keyboard2': '🎹',
-        'trumpet2': '🎺',
-        'violin2': '🎻',
-        'drum2': '🥁'
+        'drum': '🥁'
     }
+    
+    # أوامر البوت للقائمة
+    BOT_COMMANDS = [
+        ("start", "بدء استخدام البوت"),
+        ("menu", "عرض القائمة الرئيسية"),
+        ("balance", "عرض رصيدك"),
+        ("materials", "عرض الملازم"),
+        ("help", "عرض المساعدة"),
+        ("support", "الاتصال بالدعم")
+    ]
 
 # ========== إعدادات الذكاء الاصطناعي ==========
 class AIConfig:
@@ -2098,6 +1991,9 @@ class YallaNt3lemBot:
         self.admin_commands = {}
         self.user_states = {}
         
+        # لوحة المفاتيح الرئيسية
+        self.main_keyboard = self.create_main_keyboard()
+        
         # إعدادات التطبيق
         self.application = None
         self.job_queue = None
@@ -2118,6 +2014,49 @@ class YallaNt3lemBot:
         
         for directory in directories:
             os.makedirs(directory, exist_ok=True)
+    
+    # ========== لوحة المفاتيح الرئيسية ==========
+    def create_main_keyboard(self) -> ReplyKeyboardMarkup:
+        """إنشاء لوحة المفاتيح الرئيسية فوق الرسائل"""
+        keyboard = [
+            ["🎓 خدمات البوت", "💰 رصيدي"],
+            ["📚 الملازم", "👥 دعوة أصدقاء"],
+            ["🛠 الدعم الفني", "ℹ️ المساعدة"],
+            ["🏠 القائمة الرئيسية"]
+        ]
+        
+        return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    def create_admin_keyboard(self) -> ReplyKeyboardMarkup:
+        """إنشاء لوحة مفاتيح المدير"""
+        keyboard = [
+            ["👑 لوحة التحكم", "📊 الإحصائيات"],
+            ["👥 إدارة المستخدمين", "💰 إدارة الشحن"],
+            ["⚙️ إدارة الخدمات", "📚 إدارة الملازم"],
+            ["🏠 القائمة الرئيسية"]
+        ]
+        
+        return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    def create_services_keyboard(self) -> ReplyKeyboardMarkup:
+        """إنشاء لوحة مفاتيح الخدمات"""
+        keyboard = [
+            ["📊 حساب درجة العفو", "📝 تلخيص الملازم"],
+            ["❓ سؤال وجواب", "📚 الملازم المجانية"],
+            ["🔙 رجوع"]
+        ]
+        
+        return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    def create_materials_keyboard(self) -> ReplyKeyboardMarkup:
+        """إنشاء لوحة مفاتيح الملازم"""
+        keyboard = [
+            ["📚 المرحلة الابتدائية", "📚 المرحلة المتوسطة"],
+            ["📚 المرحلة الإعدادية", "📚 المرحلة الثانوية"],
+            ["🔍 بحث عن مادة", "🔙 رجوع"]
+        ]
+        
+        return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     # ========== دوال المساعدة ==========
     def is_admin(self, user_id: int) -> bool:
@@ -2193,7 +2132,7 @@ class YallaNt3lemBot:
             logger.error(f"❌ خطأ في خصم تكلفة الخدمة: {e}")
             return False
     
-    # ========== دوال القائمة الرئيسية ==========
+    # ========== دوال البداية والترحيب ==========
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """دالة البداية"""
         user = update.effective_user
@@ -2213,7 +2152,8 @@ class YallaNt3lemBot:
             
             await update.message.reply_text(
                 text,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=self.main_keyboard
             )
             return
         
@@ -2228,7 +2168,8 @@ class YallaNt3lemBot:
             
             await update.message.reply_text(
                 text,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=self.main_keyboard
             )
             return
         
@@ -2268,129 +2209,248 @@ class YallaNt3lemBot:
         # تحديث آخر نشاط
         self.db.update_user(user_id, last_active=datetime.datetime.now().isoformat())
         
-        # عرض القائمة الرئيسية
-        await self.show_main_menu(update, context)
+        # اختيار لوحة المفاتيح المناسبة
+        keyboard = self.main_keyboard
+        if self.is_admin(user_id):
+            keyboard = self.create_admin_keyboard()
+        
+        # النص الترحيبي
+        user_data = self.db.get_user(user_id)
+        welcome_text = self.format_arabic_text(
+            f"🎓 **مرحباً بك في بوت 'يلا نتعلم'**\n\n"
+            f"👤 **أهلاً {user_data.first_name if user_data else user.first_name}!**\n"
+            f"💰 **رصيدك:** {self.format_currency(user_data.balance) if user_data else '0 د.ع'}\n\n"
+            f"**الخدمات المتاحة:**\n"
+            f"• 📊 حساب درجة العفو\n"
+            f"• 📝 تلخيص الملازم بالذكاء الاصطناعي\n"
+            f"• ❓ سؤال وجواب دراسي\n"
+            f"• 📚 ملازم ومرشحات مجانية\n\n"
+            f"اختر الخدمة التي تريدها من الأزرار أدناه 👇"
+        )
+        
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard
+        )
     
-    async def show_main_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def menu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """عرض القائمة الرئيسية"""
         user = update.effective_user
         user_id = user.id
         
-        # الحصول على بيانات المستخدم
+        await self.send_typing(user_id, context)
+        
+        # التحقق من وضع الصيانة والحظر
+        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
         user_data = self.db.get_user(user_id)
-        if not user_data:
-            await self.start_command(update, context)
+        
+        if maintenance_mode and not self.is_admin(user_id):
+            await update.message.reply_text(
+                self.format_arabic_text("⛔ البوت تحت الصيانة حالياً."),
+                reply_markup=self.main_keyboard
+            )
             return
+        
+        if user_data and user_data.is_banned:
+            await update.message.reply_text(
+                self.format_arabic_text("⛔ حسابك محظور."),
+                reply_markup=self.main_keyboard
+            )
+            return
+        
+        # تحديث آخر نشاط
+        if user_data:
+            self.db.update_user(user_id, last_active=datetime.datetime.now().isoformat())
+        
+        # اختيار لوحة المفاتيح المناسبة
+        keyboard = self.main_keyboard
+        if self.is_admin(user_id):
+            keyboard = self.create_admin_keyboard()
+        
+        # النص الرئيسي
+        menu_text = self.format_arabic_text(
+            f"🏠 **القائمة الرئيسية**\n\n"
+            f"اختر الخدمة التي تريدها من الأزرار أدناه:\n\n"
+            f"🎓 **خدمات البوت:**\n"
+            f"• حساب درجة العفو\n"
+            f"• تلخيص الملازم\n"
+            f"• سؤال وجواب\n\n"
+            f"💰 **الحساب:**\n"
+            f"• رصيدي\n"
+            f"• دعوة أصدقاء\n\n"
+            f"📚 **المواد التعليمية:**\n"
+            f"• الملازم والمرشحات\n\n"
+            f"🛠 **الدعم:**\n"
+            f"• الدعم الفني\n"
+            f"• المساعدة"
+        )
+        
+        await update.message.reply_text(
+            menu_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard
+        )
+    
+    # ========== معالجة الأزرار فوق الرسائل ==========
+    async def handle_text_messages(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة الرسائل النصية والأزرار"""
+        user = update.effective_user
+        user_id = user.id
+        text = update.message.text
         
         await self.send_typing(user_id, context)
         
-        # النص الترحيبي
-        welcome_text = self.format_arabic_text(
-            f"🎓 **مرحباً بك في بوت 'يلا نتعلم'**\n\n"
-            f"👤 **أهلاً {user_data.first_name}!**\n"
-            f"💰 **رصيدك:** {self.format_currency(user_data.balance)}\n\n"
-            f"اختر الخدمة التي تريدها من القائمة أدناه:"
-        )
+        # التحقق من وضع الصيانة والحظر
+        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
+        user_data = self.db.get_user(user_id)
         
-        # الأزرار
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('chart')} حساب درجة العفو",
-                    callback_data='service_excuse'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('book')} تلخيص الملازم",
-                    callback_data='service_summary'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('brain')} سؤال وجواب",
-                    callback_data='service_qa'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('document')} الملازم والمرشحات",
-                    callback_data='materials'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('money')} شحن الرصيد",
-                    callback_data='charge_balance'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('user')} رصيدي",
-                    callback_data='my_balance'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('users')} دعوة أصدقاء",
-                    callback_data='invite_friends'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('stats')} إحصائياتي",
-                    callback_data='my_stats'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('info')} المساعدة",
-                    callback_data='help'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('wrench')} الدعم الفني",
-                    callback_data='support'
-                )
-            ]
-        ]
-        
-        # إضافة زر لوحة التحكم للمدير
-        if self.is_admin(user_id):
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{self.get_emoji('admin')} لوحة التحكم",
-                    callback_data='admin_panel'
-                )
-            ])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # إرسال أو تعديل الرسالة
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
-                welcome_text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
-            )
-        else:
+        if maintenance_mode and not self.is_admin(user_id):
             await update.message.reply_text(
-                welcome_text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
+                self.format_arabic_text("⛔ البوت تحت الصيانة حالياً."),
+                reply_markup=self.main_keyboard
             )
+            return
+        
+        if user_data and user_data.is_banned:
+            await update.message.reply_text(
+                self.format_arabic_text("⛔ حسابك محظور."),
+                reply_markup=self.main_keyboard
+            )
+            return
+        
+        # تحديث آخر نشاط
+        if user_data:
+            self.db.update_user(user_id, last_active=datetime.datetime.now().isoformat())
+        
+        # معالجة الأزرار بناءً على النص
+        if text == "🏠 القائمة الرئيسية":
+            await self.menu_command(update, context)
+        
+        elif text == "🎓 خدمات البوت":
+            await self.show_services_menu(update, context)
+        
+        elif text == "💰 رصيدي":
+            await self.show_balance_info(update, context)
+        
+        elif text == "📚 الملازم":
+            await self.show_materials_menu(update, context)
+        
+        elif text == "👥 دعوة أصدقاء":
+            await self.show_invite_friends(update, context)
+        
+        elif text == "🛠 الدعم الفني":
+            await self.show_support_info(update, context)
+        
+        elif text == "ℹ️ المساعدة":
+            await self.show_help_info(update, context)
+        
+        elif text == "🔙 رجوع":
+            await self.menu_command(update, context)
+        
+        # خدمات البوت
+        elif text == "📊 حساب درجة العفو":
+            await self.handle_excuse_service_button(update, context)
+        
+        elif text == "📝 تلخيص الملازم":
+            await self.handle_summary_service_button(update, context)
+        
+        elif text == "❓ سؤال وجواب":
+            await self.handle_qa_service_button(update, context)
+        
+        elif text == "📚 الملازم المجانية":
+            await self.show_materials_menu(update, context)
+        
+        # لوحة تحكم المدير
+        elif text == "👑 لوحة التحكم" and self.is_admin(user_id):
+            await self.show_admin_panel(update, context)
+        
+        elif text == "📊 الإحصائيات" and self.is_admin(user_id):
+            await self.show_admin_stats(update, context)
+        
+        elif text == "👥 إدارة المستخدمين" and self.is_admin(user_id):
+            await self.show_admin_users_menu(update, context)
+        
+        elif text == "💰 إدارة الشحن" and self.is_admin(user_id):
+            await self.show_admin_charge_menu(update, context)
+        
+        elif text == "⚙️ إدارة الخدمات" and self.is_admin(user_id):
+            await self.show_admin_services_menu(update, context)
+        
+        elif text == "📚 إدارة الملازم" and self.is_admin(user_id):
+            await self.show_admin_materials_menu(update, context)
+        
+        # معالجة الملازم
+        elif text in ["📚 المرحلة الابتدائية", "📚 المرحلة المتوسطة", 
+                     "📚 المرحلة الإعدادية", "📚 المرحلة الثانوية"]:
+            stage = text.replace("📚 ", "")
+            await self.show_materials_by_stage_button(update, context, stage)
+        
+        elif text == "🔍 بحث عن مادة":
+            await self.show_search_material(update, context)
+        
+        # معالجة جلسات المستخدمين
+        elif user_id in self.user_sessions:
+            session = self.user_sessions[user_id]
+            
+            if session['service'] == 'excuse' and session.get('waiting_for_score'):
+                await self.handle_excuse_score_input(update, context)
+                return
+            
+            elif session['service'] == 'qa' and session.get('waiting_for_question'):
+                await self.handle_qa_question_input(update, context)
+                return
+            
+            elif session['service'] == 'summary' and session.get('waiting_for_file'):
+                # يتم التعامل معه في handle_document_messages
+                pass
+        
+        # إذا كان النص غير معروف، عرض القائمة
+        else:
+            await self.menu_command(update, context)
     
     # ========== دوال الخدمات ==========
-    async def handle_excuse_service(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة خدمة حساب درجة العفو"""
-        query = update.callback_query
-        await query.answer()
+    async def show_services_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض قائمة الخدمات"""
+        user = update.effective_user
+        user_id = user.id
         
-        user_id = query.from_user.id
+        # الحصول على خدمات البوت
+        services = self.db.get_services(active_only=True)
+        
+        services_text = ""
+        for service in services:
+            price_text = "مجاناً" if service.price == 0 else f"{self.format_currency(service.price)}"
+            services_text += f"• **{service.name}:** {price_text}\n"
+            if service.description:
+                services_text += f"  _{service.description}_\n"
+        
+        text = self.format_arabic_text(
+            f"🎓 **خدمات البوت التعليمية**\n\n"
+            f"اختر الخدمة التي تريدها:\n\n"
+            f"{services_text}\n"
+            f"💡 **ملاحظة:** بعض الخدمات مدفوعة وتحتاج إلى رصيد كافٍ."
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=self.create_services_keyboard()
+        )
+    
+    async def handle_excuse_service_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة زر خدمة حساب درجة العفو"""
+        user = update.effective_user
+        user_id = user.id
         
         await self.send_typing(user_id, context)
         
         # الحصول على الخدمة
         service = self.db.get_service_by_name('حساب درجة العفو')
         if not service:
-            await query.edit_message_text(
+            await update.message.reply_text(
                 self.format_arabic_text("⚠️ الخدمة غير متاحة حالياً."),
-                parse_mode=ParseMode.MARKDOWN
+                reply_markup=self.create_services_keyboard()
             )
             return
         
@@ -2404,23 +2464,12 @@ class YallaNt3lemBot:
                 f"الرجاء شحن رصيدك أولاً."
             )
             
-            await query.edit_message_text(
+            await update.message.reply_text(
                 text,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('money')} شحن الرصيد",
-                            callback_data='charge_balance'
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} رجوع",
-                            callback_data='back_to_menu'
-                        )
-                    ]
-                ]),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardMarkup([
+                    ["💰 شحن الرصيد", "🔙 رجوع"]
+                ], resize_keyboard=True)
             )
             return
         
@@ -2429,7 +2478,8 @@ class YallaNt3lemBot:
             'service': 'excuse',
             'service_id': service.id,
             'scores': [],
-            'step': 1
+            'step': 1,
+            'waiting_for_score': True
         }
         
         text = self.format_arabic_text(
@@ -2440,26 +2490,27 @@ class YallaNt3lemBot:
             f"أدخل درجة الكورس الأول (من 0 إلى 100):"
         )
         
-        await query.edit_message_text(
+        await update.message.reply_text(
             text,
             parse_mode=ParseMode.MARKDOWN
         )
     
-    async def handle_excuse_score(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة درجات العفو"""
+    async def handle_excuse_score_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة إدخال درجات العفو"""
         user = update.effective_user
         user_id = user.id
         
         # التحقق من الجلسة
         if user_id not in self.user_sessions or self.user_sessions[user_id]['service'] != 'excuse':
-            await self.show_main_menu(update, context)
+            await self.menu_command(update, context)
             return
         
         session = self.user_sessions[user_id]
+        text = update.message.text.strip()
         
         # التحقق من صحة الدرجة
         try:
-            score = float(update.message.text.strip())
+            score = float(text)
             if score < 0 or score > 100:
                 raise ValueError
         except:
@@ -2493,10 +2544,10 @@ class YallaNt3lemBot:
             if 'error' in result:
                 await update.message.reply_text(
                     self.format_arabic_text(f"⚠️ {result['error']}"),
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=self.create_services_keyboard()
                 )
                 del self.user_sessions[user_id]
-                await self.show_main_menu(update, context)
                 return
             
             # خصم تكلفة الخدمة
@@ -2507,10 +2558,10 @@ class YallaNt3lemBot:
             if not success:
                 await update.message.reply_text(
                     self.format_arabic_text("⚠️ حدث خطأ في معالجة الدفع."),
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=self.create_services_keyboard()
                 )
                 del self.user_sessions[user_id]
-                await self.show_main_menu(update, context)
                 return
             
             # عرض النتيجة
@@ -2533,49 +2584,37 @@ class YallaNt3lemBot:
                 await update.message.reply_document(
                     document=pdf_file,
                     caption=result_text,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} العودة للقائمة",
-                                callback_data='back_to_menu'
-                            )
-                        ]
-                    ])
+                    parse_mode=ParseMode.MARKDOWN
                 )
             else:
                 # إرسال النتيجة فقط
                 await update.message.reply_text(
                     result_text,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} العودة للقائمة",
-                                callback_data='back_to_menu'
-                            )
-                        ]
-                    ])
+                    parse_mode=ParseMode.MARKDOWN
                 )
             
             # حذف الجلسة
             del self.user_sessions[user_id]
+            
+            # عرض لوحة المفاتيح
+            await update.message.reply_text(
+                self.format_arabic_text("اختر خدمة أخرى:"),
+                reply_markup=self.create_services_keyboard()
+            )
     
-    async def handle_summary_service(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة خدمة تلخيص الملازم"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
+    async def handle_summary_service_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة زر خدمة تلخيص الملازم"""
+        user = update.effective_user
+        user_id = user.id
         
         await self.send_typing(user_id, context)
         
         # الحصول على الخدمة
         service = self.db.get_service_by_name('تلخيص الملازم')
         if not service:
-            await query.edit_message_text(
+            await update.message.reply_text(
                 self.format_arabic_text("⚠️ الخدمة غير متاحة حالياً."),
-                parse_mode=ParseMode.MARKDOWN
+                reply_markup=self.create_services_keyboard()
             )
             return
         
@@ -2589,23 +2628,12 @@ class YallaNt3lemBot:
                 f"الرجاء شحن رصيدك أولاً."
             )
             
-            await query.edit_message_text(
+            await update.message.reply_text(
                 text,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('money')} شحن الرصيد",
-                            callback_data='charge_balance'
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} رجوع",
-                            callback_data='back_to_menu'
-                        )
-                    ]
-                ]),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardMarkup([
+                    ["💰 شحن الرصيد", "🔙 رجوع"]
+                ], resize_keyboard=True)
             )
             return
         
@@ -2620,21 +2648,635 @@ class YallaNt3lemBot:
             f"📝 **خدمة تلخيص الملازم**\n\n"
             f"💰 السعر: {self.format_currency(service.price)}\n"
             f"🤖 يتم التلخيص باستخدام الذكاء الاصطناعي المتقدم\n\n"
-            f"**تعليمات:**\n"
-            f"1. أرسل ملف PDF المراد تلخيصه\n"
-            f"2. انتظر قليلاً لمعالجة الملف\n"
-            f"3. ستستلم ملف PDF ملخصاً\n\n"
+            f"**أرسل الآن ملف PDF المراد تلخيصه:**\n\n"
             f"📎 **الحد الأقصى لحجم الملف:** 20 ميجابايت\n"
-            f"⏱️ **الوقت المتوقع:** 1-3 دقائق"
+            f"⏱️ **الوقت المتوقع:** 1-3 دقائق\n\n"
+            f"للإلغاء، اضغط على زر '🔙 رجوع'"
         )
         
-        await query.edit_message_text(
+        await update.message.reply_text(
             text,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔙 رجوع"]
+            ], resize_keyboard=True)
         )
     
-    async def handle_pdf_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة ملف PDF للتلخيص"""
+    async def handle_qa_service_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة زر خدمة سؤال وجواب"""
+        user = update.effective_user
+        user_id = user.id
+        
+        await self.send_typing(user_id, context)
+        
+        # الحصول على الخدمة
+        service = self.db.get_service_by_name('سؤال وجواب')
+        if not service:
+            await update.message.reply_text(
+                self.format_arabic_text("⚠️ الخدمة غير متاحة حالياً."),
+                reply_markup=self.create_services_keyboard()
+            )
+            return
+        
+        # التحقق من الرصيد
+        has_balance, current_balance = await self.check_user_balance(user_id, service.price)
+        if not has_balance:
+            text = self.format_arabic_text(
+                f"💰 **رصيدك غير كافٍ**\n\n"
+                f"سعر الخدمة: {self.format_currency(service.price)}\n"
+                f"رصيدك الحالي: {self.format_currency(current_balance)}\n\n"
+                f"الرجاء شحن رصيدك أولاً."
+            )
+            
+            await update.message.reply_text(
+                text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardMarkup([
+                    ["💰 شحن الرصيد", "🔙 رجوع"]
+                ], resize_keyboard=True)
+            )
+            return
+        
+        # بدء جلسة الخدمة
+        self.user_sessions[user_id] = {
+            'service': 'qa',
+            'service_id': service.id,
+            'waiting_for_question': True
+        }
+        
+        text = self.format_arabic_text(
+            f"❓ **خدمة سؤال وجواب**\n\n"
+            f"💰 السعر: {self.format_currency(service.price)}\n"
+            f"🤖 يتم الإجابة باستخدام الذكاء الاصطناعي المتقدم\n\n"
+            f"**أرسل الآن سؤالك نصياً أو كصورة:**\n\n"
+            f"🎯 **التخصص:** المنهج العراقي والمواد الدراسية\n"
+            f"⏱️ **الوقت المتوقع:** 30-60 ثانية\n\n"
+            f"للإلغاء، اضغط على زر '🔙 رجوع'"
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔙 رجوع"]
+            ], resize_keyboard=True)
+        )
+    
+    async def handle_qa_question_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة إدخال سؤال وجواب"""
+        user = update.effective_user
+        user_id = user.id
+        
+        # التحقق من الجلسة
+        if user_id not in self.user_sessions or not self.user_sessions[user_id].get('waiting_for_question'):
+            await self.menu_command(update, context)
+            return
+        
+        session = self.user_sessions[user_id]
+        
+        await self.send_typing(user_id, context)
+        
+        # إرسال رسالة الانتظار
+        processing_msg = await update.message.reply_text(
+            self.format_arabic_text("🤖 **جاري معالجة سؤالك...**"),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        try:
+            question = update.message.text.strip()
+            
+            # الحصول على الإجابة من الذكاء الاصطناعي
+            answer = await self.ai.answer_question(question, is_image=False)
+            
+            # خصم تكلفة الخدمة
+            success = await self.deduct_service_cost(
+                user_id, session['service_id'], 'سؤال وجواب'
+            )
+            
+            if not success:
+                await processing_msg.edit_text(
+                    self.format_arabic_text("⚠️ **حدث خطأ في معالجة الدفع.**"),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                del self.user_sessions[user_id]
+                await self.menu_command(update, context)
+                return
+            
+            await processing_msg.edit_text(
+                self.format_arabic_text("📝 **جاري إعداد الإجابة...**"),
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            # إرسال الإجابة
+            user_data = self.db.get_user(user_id)
+            
+            # تقسيم الإجابة إذا كانت طويلة
+            if len(answer) > 4000:
+                parts = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
+                
+                for i, part in enumerate(parts, 1):
+                    if i == 1:
+                        header = self.format_arabic_text(
+                            f"🧠 **إجابتي على سؤالك:**\n\n"
+                            f"{part}\n\n"
+                            f"📄 الصفحة {i}/{len(parts)}"
+                        )
+                        await processing_msg.delete()
+                        await update.message.reply_text(
+                            header,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                    else:
+                        await update.message.reply_text(
+                            self.format_arabic_text(
+                                f"{part}\n\n"
+                                f"📄 الصفحة {i}/{len(parts)}"
+                            ),
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+            else:
+                full_answer = self.format_arabic_text(
+                    f"🧠 **إجابتي على سؤالك:**\n\n"
+                    f"{answer}\n\n"
+                    f"💰 **تم خصم:** {self.format_currency(self.db.get_service(session['service_id']).price)}\n"
+                    f"💳 **الرصيد المتبقي:** {self.format_currency(user_data.balance)}\n\n"
+                    f"🎓 **بوت 'يلا نتعلم'**"
+                )
+                
+                await processing_msg.delete()
+                await update.message.reply_text(
+                    full_answer,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            
+            # حذف الجلسة
+            del self.user_sessions[user_id]
+            
+            # عرض لوحة المفاتيح
+            await update.message.reply_text(
+                self.format_arabic_text("اختر خدمة أخرى:"),
+                reply_markup=self.create_services_keyboard()
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في معالجة سؤال وجواب: {e}")
+            await processing_msg.edit_text(
+                self.format_arabic_text(
+                    f"⚠️ **حدث خطأ أثناء معالجة سؤالك:**\n{str(e)[:200]}"
+                ),
+                parse_mode=ParseMode.MARKDOWN
+            )
+            del self.user_sessions[user_id]
+            await self.menu_command(update, context)
+    
+    # ========== دوال الملازم ==========
+    async def show_materials_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض قائمة الملازم"""
+        text = self.format_arabic_text(
+            "📚 **الملازم والمرشحات**\n\n"
+            "اختر المرحلة الدراسية أو ابحث عن مادة محددة:\n\n"
+            "يمكنك البحث عن مواد دراسية في جميع المراحل."
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=self.create_materials_keyboard()
+        )
+    
+    async def show_materials_by_stage_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE, stage: str):
+        """عرض مواد مرحلة معينة"""
+        user = update.effective_user
+        user_id = user.id
+        
+        await self.send_typing(user_id, context)
+        
+        # الحصول على مواد المرحلة
+        materials = self.db.get_materials(stage=stage)
+        
+        if not materials:
+            text = self.format_arabic_text(
+                f"📚 **الملازم - {stage}**\n\n"
+                "⚠️ **لا توجد مواد متاحة لهذه المرحلة حالياً.**\n\n"
+                "سيتم إضافة مواد قريباً."
+            )
+            
+            await update.message.reply_text(
+                text,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=self.create_materials_keyboard()
+            )
+            return
+        
+        # عرض المواد
+        materials_text = ""
+        for i, material in enumerate(materials[:10], 1):  # عرض أول 10 مواد فقط
+            materials_text += f"{i}. **{material.name}**\n"
+            if material.description:
+                materials_text += f"   _{material.description[:50]}..._\n"
+            materials_text += f"   📊 {material.subject} | ⬇️ {material.downloads}\n\n"
+        
+        if len(materials) > 10:
+            materials_text += f"*و {len(materials) - 10} مواد أخرى*\n\n"
+        
+        text = self.format_arabic_text(
+            f"📚 **الملازم - {stage}**\n\n"
+            f"عدد المواد المتاحة: {len(materials)}\n\n"
+            f"{materials_text}"
+            f"لتحميل مادة، أرسل اسمها أو رقمها."
+        )
+        
+        # حفظ المرحلة الحالية في سياق المستخدم
+        context.user_data['current_stage'] = stage
+        context.user_data['current_materials'] = [m.id for m in materials]
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔍 بحث عن مادة", "🔙 رجوع"]
+            ], resize_keyboard=True)
+        )
+    
+    async def show_search_material(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض بحث عن مادة"""
+        text = self.format_arabic_text(
+            "🔍 **بحث عن مادة**\n\n"
+            "أرسل اسم المادة أو جزء منه للبحث:\n\n"
+            "مثال: 'رياضيات' أو 'فيزياء'"
+        )
+        
+        # حفظ حالة البحث
+        context.user_data['searching_material'] = True
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔙 رجوع"]
+            ], resize_keyboard=True)
+        )
+    
+    # ========== دوال الرصيد والإحالة ==========
+    async def show_balance_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض معلومات الرصيد"""
+        user = update.effective_user
+        user_id = user.id
+        
+        await self.send_typing(user_id, context)
+        
+        # الحصول على بيانات المستخدم
+        user_data = self.db.get_user(user_id)
+        if not user_data:
+            await self.start_command(update, context)
+            return
+        
+        # الحصول على آخر المعاملات
+        transactions = self.db.get_user_transactions(user_id, limit=5)
+        
+        # تنسيق المعاملات
+        transactions_text = ""
+        if transactions:
+            for trans in transactions:
+                amount_text = f"+{abs(trans.amount)}" if trans.amount > 0 else f"-{abs(trans.amount)}"
+                date_text = trans.date[:10] if trans.date else "غير معروف"
+                trans_type = {
+                    'welcome_bonus': '🎁 هدية ترحيبية',
+                    'referral_bonus': '👥 مكافأة إحالة',
+                    'service_payment': '💸 دفع خدمة',
+                    'admin_charge': '👑 شحن من مدير'
+                }.get(trans.type, trans.type)
+                
+                transactions_text += f"• {amount_text} - {trans_type} ({date_text})\n"
+        else:
+            transactions_text = "لا توجد معاملات سابقة.\n"
+        
+        text = self.format_arabic_text(
+            f"💰 **رصيدك الحالي**\n\n"
+            f"💳 **المبلغ:** {self.format_currency(user_data.balance)}\n"
+            f"👤 **المستخدم:** {user_data.first_name} {user_data.last_name or ''}\n"
+            f"🆔 **المعرف:** {user_data.user_id}\n"
+            f"📅 **تاريخ الانضمام:** {user_data.join_date[:10]}\n\n"
+            f"📊 **آخر المعاملات:**\n{transactions_text}\n"
+            f"💡 **لشحن الرصيد:** تواصل مع الدعم @Allawi04@"
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["👥 دعوة أصدقاء", "💰 شحن الرصيد"],
+                ["🔙 رجوع"]
+            ], resize_keyboard=True)
+        )
+    
+    async def show_invite_friends(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض دعوة الأصدقاء"""
+        user = update.effective_user
+        user_id = user.id
+        
+        await self.send_typing(user_id, context)
+        
+        # الحصول على بيانات المستخدم
+        user_data = self.db.get_user(user_id)
+        if not user_data:
+            await self.menu_command(update, context)
+            return
+        
+        # إنشاء رابط الدعوة
+        invite_link = f"https://t.me/{self.bot_username.replace('@', '')}?start={user_data.referral_code}"
+        
+        # الحصول على عدد الإحالات
+        self.db.cursor.execute('SELECT COUNT(*) FROM users WHERE referred_by = ?', (user_data.referral_code,))
+        referral_count = self.db.cursor.fetchone()[0] or 0
+        
+        text = self.format_arabic_text(
+            f"👥 **دعوة الأصدقاء**\n\n"
+            f"💰 **مكافأة الإحالة:** {self.db.get_setting('referral_bonus', '500')} دينار\n"
+            f"🎁 **هدية الصديق:** {self.db.get_setting('welcome_bonus', '1000')} دينار\n"
+            f"📊 **عدد الإحالات:** {referral_count}\n\n"
+            f"**كيفية الدعوة:**\n"
+            f"1. أرسل الرابط لأصدقائك\n"
+            f"2. عندما ينضم صديقك\n"
+            f"3. تحصل على {self.db.get_setting('referral_bonus', '500')} دينار\n"
+            f"4. صديقك يحصل على {self.db.get_setting('welcome_bonus', '1000')} دينار\n\n"
+            f"🔗 **رابط الدعوة:**\n`{invite_link}`"
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔗 مشاركة الرابط", "🔙 رجوع"]
+            ], resize_keyboard=True)
+        )
+    
+    # ========== دوال الدعم والمساعدة ==========
+    async def show_support_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض معلومات الدعم"""
+        # الحصول على إعدادات القناة
+        bot_channel = self.db.get_setting('bot_channel', '')
+        
+        channel_text = ""
+        if bot_channel:
+            channel_text = f"📢 **قناة البوت:** {bot_channel}\n\n"
+        
+        text = self.format_arabic_text(
+            f"🛠 **الدعم الفني**\n\n"
+            f"📞 **للشحن أو الاستفسارات أو المشاكل الفنية:**\n"
+            f"• **الدعم:** @Allawi04@\n\n"
+            f"{channel_text}"
+            f"⏰ **وقت الاستجابة:**\n"
+            f"• **أيام الأسبوع:** 9 صباحاً - 10 مساءً\n"
+            f"• **الجمعة:** 2 ظهراً - 10 مساءً\n\n"
+            f"💡 **نصائح للتواصل:**\n"
+            f"1. تأكد من إرسال إيديك عند التواصل\n"
+            f"2. اشرح مشكلتك بوضوح\n"
+            f"3. أرفق صوراً إذا لزم الأمر\n"
+            f"4. تحلى بالصبر أثناء الرد"
+        )
+        
+        keyboard_buttons = []
+        if bot_channel:
+            keyboard_buttons.append(["📢 قناة البوت"])
+        
+        keyboard_buttons.append(["🔙 رجوع"])
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
+        )
+    
+    async def show_help_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض معلومات المساعدة"""
+        # الحصول على أسعار الخدمات
+        services = self.db.get_services()
+        services_text = ""
+        for service in services:
+            if service.price > 0:
+                services_text += f"• **{service.name}:** {self.format_currency(service.price)}\n"
+            else:
+                services_text += f"• **{service.name}:** مجاناً\n"
+        
+        text = self.format_arabic_text(
+            f"ℹ️ **المساعدة والاستفسارات**\n\n"
+            f"🎓 **عن البوت:**\n"
+            f"بوت 'يلا نتعلم' هو بوت تعليمي للطلاب العراقيين.\n\n"
+            f"💰 **أسعار الخدمات:**\n{services_text}\n"
+            f"🔗 **رابط البوت:** @{self.bot_username.replace('@', '')}\n\n"
+            f"📞 **الدعم الفني:**\n"
+            f"• **الدعم:** @Allawi04@\n"
+            f"• **وقت الاستجابة:** 9 صباحاً - 10 مساءً\n\n"
+            f"⚙️ **كيفية الاستخدام:**\n"
+            f"1. اختر الخدمة من الأزرار\n"
+            f"2. اتبع التعليمات الظاهرة\n"
+            f"3. تأكد من وجود رصيد كافٍ\n"
+            f"4. استمتع بالخدمات التعليمية"
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup([
+                ["🛠 الدعم الفني", "🔙 رجوع"]
+            ], resize_keyboard=True)
+        )
+    
+    # ========== دوال المدير ==========
+    async def show_admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض لوحة تحكم المدير"""
+        user = update.effective_user
+        user_id = user.id
+        
+        if not self.is_admin(user_id):
+            await update.message.reply_text(
+                self.format_arabic_text("⛔ غير مصرح لك بالدخول."),
+                reply_markup=self.main_keyboard
+            )
+            return
+        
+        await self.send_typing(user_id, context)
+        
+        # الحصول على إحصائيات البوت
+        stats = self.db.get_statistics(1)
+        
+        total_users = self.db.get_user_count()
+        total_balance = self.db.get_total_balance()
+        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
+        
+        text = self.format_arabic_text(
+            f"👑 **لوحة التحكم**\n\n"
+            f"📊 **إحصائيات البوت:**\n"
+            f"• **إجمالي المستخدمين:** {total_users}\n"
+            f"• **إجمالي الأرصدة:** {self.format_currency(total_balance)}\n"
+            f"• **وضع الصيانة:** {'✅ مفعل' if maintenance_mode else '❌ غير مفعل'}\n\n"
+            f"📈 **إحصائيات اليوم:**\n"
+            f"• **المستخدمين الجدد:** {stats.get('daily_stats', [{}])[0].get('new_users', 0) if stats.get('daily_stats') else 0}\n"
+            f"• **المستخدمين النشطين:** {stats.get('daily_stats', [{}])[0].get('active_users', 0) if stats.get('daily_stats') else 0}\n"
+            f"• **الدخل اليومي:** {self.format_currency(stats.get('daily_stats', [{}])[0].get('total_income', 0) if stats.get('daily_stats') else 0)}\n\n"
+            f"اختر القسم المطلوب:"
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=self.create_admin_keyboard()
+        )
+    
+    async def show_admin_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض إحصائيات المدير"""
+        user = update.effective_user
+        user_id = user.id
+        
+        if not self.is_admin(user_id):
+            return
+        
+        await self.send_typing(user_id, context)
+        
+        # تحديث الإحصائيات أولاً
+        self.db.update_statistics()
+        
+        # الحصول على إحصائيات مفصلة
+        stats = self.db.get_statistics(7)
+        
+        # تنسيق إحصائيات الأيام
+        daily_stats_text = ""
+        if stats.get('daily_stats'):
+            for day_stat in stats['daily_stats']:
+                daily_stats_text += (
+                    f"📅 **{day_stat['date']}:**\n"
+                    f"  👥 جديد: {day_stat['new_users']} | نشيط: {day_stat['active_users']}\n"
+                    f"  💰 دخل: {self.format_currency(day_stat['total_income'])}\n"
+                    f"  📊 استخدام: {day_stat['service_usage_count']}\n\n"
+                )
+        else:
+            daily_stats_text = "لا توجد بيانات كافية.\n"
+        
+        text = self.format_arabic_text(
+            f"📈 **إحصائيات مفصلة**\n\n"
+            f"📊 **إحصائيات عامة:**\n"
+            f"• **إجمالي المستخدمين:** {stats.get('total_users', 0)}\n"
+            f"• **إجمالي الأرصدة:** {self.format_currency(stats.get('total_balance', 0))}\n"
+            f"• **إجمالي الدخل:** {self.format_currency(stats.get('total_income', 0))}\n\n"
+            f"📅 **إحصائيات آخر 7 أيام:**\n{daily_stats_text}"
+            f"📋 **ملاحظة:** يتم تحديث الإحصائيات تلقائياً كل 24 ساعة."
+        )
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=self.create_admin_keyboard()
+        )
+    
+    async def show_admin_users_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض قائمة إدارة المستخدمين للمدير"""
+        user = update.effective_user
+        user_id = user.id
+        
+        if not self.is_admin(user_id):
+            return
+        
+        text = self.format_arabic_text(
+            "👥 **إدارة المستخدمين**\n\n"
+            "اختر الإجراء المطلوب:"
+        )
+        
+        keyboard = [
+            ["📋 عرض المستخدمين", "🔍 بحث عن مستخدم"],
+            ["💰 شحن رصيد", "⛔ حظر مستخدم"],
+            ["✅ فك حظر", "🔙 رجوع"]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+    
+    async def show_admin_charge_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض قائمة إدارة الشحن للمدير"""
+        user = update.effective_user
+        user_id = user.id
+        
+        if not self.is_admin(user_id):
+            return
+        
+        text = self.format_arabic_text(
+            "💰 **إدارة الشحن**\n\n"
+            "اختر الإجراء المطلوب:"
+        )
+        
+        keyboard = [
+            ["➕ شحن رصيد", "➖ خصم رصيد"],
+            ["🎁 تعديل مكافأة الإحالة", "🎊 تعديل الهدية الترحيبية"],
+            ["🔙 رجوع"]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+    
+    async def show_admin_services_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض قائمة إدارة الخدمات للمدير"""
+        user = update.effective_user
+        user_id = user.id
+        
+        if not self.is_admin(user_id):
+            return
+        
+        # الحصول على أسعار الخدمات
+        services = self.db.get_services()
+        services_text = ""
+        for service in services:
+            services_text += f"• **{service.name}:** {self.format_currency(service.price)}\n"
+        
+        text = self.format_arabic_text(
+            f"⚙️ **إدارة الخدمات**\n\n"
+            f"💰 **الأسعار الحالية:**\n{services_text}\n"
+            f"اختر الخدمة المراد تعديل سعرها:"
+        )
+        
+        # إنشاء أزرار الخدمات
+        keyboard = []
+        for service in services:
+            if service.price > 0:
+                keyboard.append([f"💰 {service.name}"])
+        
+        keyboard.append(["🔙 رجوع"])
+        
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+    
+    async def show_admin_materials_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """عرض قائمة إدارة الملازم للمدير"""
+        user = update.effective_user
+        user_id = user.id
+        
+        if not self.is_admin(user_id):
+            return
+        
+        text = self.format_arabic_text(
+            "📚 **إدارة الملازم**\n\n"
+            "اختر الإجراء المطلوب:"
+        )
+        
+        keyboard = [
+            ["➕ إضافة مادة", "🗑 حذف مادة"],
+            ["📋 عرض المواد", "🔙 رجوع"]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+    
+    # ========== معالجة الملفات والصور ==========
+    async def handle_document_messages(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة الملفات المرسلة"""
         user = update.effective_user
         user_id = user.id
         
@@ -2663,7 +3305,7 @@ class YallaNt3lemBot:
                 parse_mode=ParseMode.MARKDOWN
             )
             del self.user_sessions[user_id]
-            await self.show_main_menu(update, context)
+            await self.menu_command(update, context)
             return
         
         await self.send_typing(user_id, context)
@@ -2720,7 +3362,7 @@ class YallaNt3lemBot:
                     parse_mode=ParseMode.MARKDOWN
                 )
                 del self.user_sessions[user_id]
-                await self.show_main_menu(update, context)
+                await self.menu_command(update, context)
                 return
             
             # إنشاء ملف PDF ملخص
@@ -2737,7 +3379,7 @@ class YallaNt3lemBot:
                     parse_mode=ParseMode.MARKDOWN
                 )
                 del self.user_sessions[user_id]
-                await self.show_main_menu(update, context)
+                await self.menu_command(update, context)
                 return
             
             # إرسال الملف الملخص
@@ -2759,19 +3401,17 @@ class YallaNt3lemBot:
             await update.message.reply_document(
                 document=pdf_file,
                 caption=caption,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} العودة للقائمة",
-                            callback_data='back_to_menu'
-                        )
-                    ]
-                ])
+                parse_mode=ParseMode.MARKDOWN
             )
             
             # حذف الجلسة
             del self.user_sessions[user_id]
+            
+            # عرض لوحة المفاتيح
+            await update.message.reply_text(
+                self.format_arabic_text("اختر خدمة أخرى:"),
+                reply_markup=self.create_services_keyboard()
+            )
             
         except Exception as e:
             logger.error(f"❌ خطأ في معالجة PDF: {e}")
@@ -2782,82 +3422,10 @@ class YallaNt3lemBot:
                 parse_mode=ParseMode.MARKDOWN
             )
             del self.user_sessions[user_id]
-            await self.show_main_menu(update, context)
+            await self.menu_command(update, context)
     
-    async def handle_qa_service(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة خدمة سؤال وجواب"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على الخدمة
-        service = self.db.get_service_by_name('سؤال وجواب')
-        if not service:
-            await query.edit_message_text(
-                self.format_arabic_text("⚠️ الخدمة غير متاحة حالياً."),
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-        
-        # التحقق من الرصيد
-        has_balance, current_balance = await self.check_user_balance(user_id, service.price)
-        if not has_balance:
-            text = self.format_arabic_text(
-                f"💰 **رصيدك غير كافٍ**\n\n"
-                f"سعر الخدمة: {self.format_currency(service.price)}\n"
-                f"رصيدك الحالي: {self.format_currency(current_balance)}\n\n"
-                f"الرجاء شحن رصيدك أولاً."
-            )
-            
-            await query.edit_message_text(
-                text,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('money')} شحن الرصيد",
-                            callback_data='charge_balance'
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} رجوع",
-                            callback_data='back_to_menu'
-                        )
-                    ]
-                ]),
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-        
-        # بدء جلسة الخدمة
-        self.user_sessions[user_id] = {
-            'service': 'qa',
-            'service_id': service.id,
-            'waiting_for_question': True
-        }
-        
-        text = self.format_arabic_text(
-            f"❓ **خدمة سؤال وجواب**\n\n"
-            f"💰 السعر: {self.format_currency(service.price)}\n"
-            f"🤖 يتم الإجابة باستخدام الذكاء الاصطناعي المتقدم\n\n"
-            f"**تعليمات:**\n"
-            f"1. أرسل سؤالك نصياً\n"
-            f"2. أو أرسل صورة تحتوي على السؤال\n"
-            f"3. ستستلم إجابة علمية مفصلة\n\n"
-            f"🎯 **التخصص:** المنهج العراقي والمواد الدراسية\n"
-            f"⏱️ **الوقت المتوقع:** 30-60 ثانية"
-        )
-        
-        await query.edit_message_text(
-            text,
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def handle_qa_question(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة سؤال وجواب"""
+    async def handle_photo_messages(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة الصور المرسلة"""
         user = update.effective_user
         user_id = user.id
         
@@ -2871,36 +3439,18 @@ class YallaNt3lemBot:
         
         # إرسال رسالة الانتظار
         processing_msg = await update.message.reply_text(
-            self.format_arabic_text("🤖 **جاري معالجة سؤالك...**"),
+            self.format_arabic_text("🤖 **جاري معالجة صورتك...**"),
             parse_mode=ParseMode.MARKDOWN
         )
         
         try:
-            question = ""
-            is_image = False
-            image_data = None
-            
-            # تحديد نوع المحتوى
-            if update.message.text:
-                question = update.message.text.strip()
-            elif update.message.photo:
-                is_image = True
-                # استخدام أعلى دقة للصورة
-                photo = update.message.photo[-1]
-                file = await photo.get_file()
-                image_data = await file.download_as_bytearray()
-            else:
-                await processing_msg.edit_text(
-                    self.format_arabic_text(
-                        "⚠️ **الرجاء إرسال سؤال نصي أو صورة تحتوي على سؤال.**"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                del self.user_sessions[user_id]
-                return
+            # استخدام أعلى دقة للصورة
+            photo = update.message.photo[-1]
+            file = await photo.get_file()
+            image_data = await file.download_as_bytearray()
             
             # الحصول على الإجابة من الذكاء الاصطناعي
-            answer = await self.ai.answer_question(question, is_image, image_data)
+            answer = await self.ai.answer_question("", is_image=True, image_data=image_data)
             
             # خصم تكلفة الخدمة
             success = await self.deduct_service_cost(
@@ -2913,7 +3463,7 @@ class YallaNt3lemBot:
                     parse_mode=ParseMode.MARKDOWN
                 )
                 del self.user_sessions[user_id]
-                await self.show_main_menu(update, context)
+                await self.menu_command(update, context)
                 return
             
             await processing_msg.edit_text(
@@ -2931,7 +3481,7 @@ class YallaNt3lemBot:
                 for i, part in enumerate(parts, 1):
                     if i == 1:
                         header = self.format_arabic_text(
-                            f"🧠 **إجابتي على سؤالك:**\n\n"
+                            f"🧠 **إجابتي على صورتك:**\n\n"
                             f"{part}\n\n"
                             f"📄 الصفحة {i}/{len(parts)}"
                         )
@@ -2950,7 +3500,7 @@ class YallaNt3lemBot:
                         )
             else:
                 full_answer = self.format_arabic_text(
-                    f"🧠 **إجابتي على سؤالك:**\n\n"
+                    f"🧠 **إجابتي على صورتك:**\n\n"
                     f"{answer}\n\n"
                     f"💰 **تم خصم:** {self.format_currency(self.db.get_service(session['service_id']).price)}\n"
                     f"💳 **الرصيد المتبقي:** {self.format_currency(user_data.balance)}\n\n"
@@ -2960,1460 +3510,28 @@ class YallaNt3lemBot:
                 await processing_msg.delete()
                 await update.message.reply_text(
                     full_answer,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} العودة للقائمة",
-                                callback_data='back_to_menu'
-                            )
-                        ]
-                    ])
+                    parse_mode=ParseMode.MARKDOWN
                 )
             
             # حذف الجلسة
             del self.user_sessions[user_id]
             
+            # عرض لوحة المفاتيح
+            await update.message.reply_text(
+                self.format_arabic_text("اختر خدمة أخرى:"),
+                reply_markup=self.create_services_keyboard()
+            )
+            
         except Exception as e:
-            logger.error(f"❌ خطأ في معالجة سؤال وجواب: {e}")
+            logger.error(f"❌ خطأ في معالجة الصورة: {e}")
             await processing_msg.edit_text(
                 self.format_arabic_text(
-                    f"⚠️ **حدث خطأ أثناء معالجة سؤالك:**\n{str(e)[:200]}"
+                    f"⚠️ **حدث خطأ أثناء معالجة صورتك:**\n{str(e)[:200]}"
                 ),
                 parse_mode=ParseMode.MARKDOWN
             )
             del self.user_sessions[user_id]
-            await self.show_main_menu(update, context)
-    
-    # ========== دوال الملازم ==========
-    async def show_materials_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض قائمة الملازم"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        await self.send_typing(user_id, context)
-        
-        # الحصول على المراحل الدراسية المتاحة
-        self.db.cursor.execute('SELECT DISTINCT stage FROM materials WHERE is_active = 1 ORDER BY stage')
-        stages = [row[0] for row in self.db.cursor.fetchall()]
-        
-        if not stages:
-            text = self.format_arabic_text(
-                "📚 **الملازم والمرشحات**\n\n"
-                "⚠️ **لا توجد مواد متاحة حالياً.**\n\n"
-                "سيتم إضافة مواد قريباً."
-            )
-            
-            await query.edit_message_text(
-                text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} رجوع",
-                            callback_data='back_to_menu'
-                        )
-                    ]
-                ])
-            )
-            return
-        
-        # إنشاء أزرار المراحل
-        keyboard = []
-        for stage in stages:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{self.get_emoji('book')} {stage}",
-                    callback_data=f'material_stage_{stage}'
-                )
-            ])
-        
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{self.get_emoji('back')} رجوع",
-                callback_data='back_to_menu'
-            )
-        ])
-        
-        text = self.format_arabic_text(
-            "📚 **الملازم والمرشحات**\n\n"
-            "اختر المرحلة الدراسية:"
-        )
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def show_materials_by_stage(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض مواد مرحلة معينة"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        stage = query.data.replace('material_stage_', '')
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على مواد المرحلة
-        materials = self.db.get_materials(stage=stage)
-        
-        if not materials:
-            text = self.format_arabic_text(
-                f"📚 **الملازم - {stage}**\n\n"
-                "⚠️ **لا توجد مواد متاحة لهذه المرحلة حالياً.**"
-            )
-            
-            await query.edit_message_text(
-                text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} رجوع",
-                            callback_data='materials'
-                        )
-                    ]
-                ])
-            )
-            return
-        
-        # إنشاء أزرار المواد
-        keyboard = []
-        for material in materials:
-            button_text = f"{self.get_emoji('document')} {material.name}"
-            if material.subject:
-                button_text += f" ({material.subject})"
-            
-            keyboard.append([
-                InlineKeyboardButton(
-                    button_text,
-                    callback_data=f'material_{material.id}'
-                )
-            ])
-        
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{self.get_emoji('back')} رجوع للمراحل",
-                callback_data='materials'
-            )
-        ])
-        
-        text = self.format_arabic_text(
-            f"📚 **الملازم - {stage}**\n\n"
-            f"عدد المواد المتاحة: {len(materials)}\n\n"
-            "اختر المادة المراد تحميلها:"
-        )
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def send_material_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إرسال ملف المادة"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        material_id = int(query.data.replace('material_', ''))
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على بيانات المادة
-        material = self.db.get_material(material_id)
-        
-        if not material or not material.is_active:
-            await query.edit_message_text(
-                self.format_arabic_text("⚠️ **هذه المادة غير متاحة حالياً.**"),
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-        
-        try:
-            # إرسال الملف
-            caption = self.format_arabic_text(
-                f"📚 **{material.name}**\n\n"
-                f"📖 **الوصف:** {material.description or 'لا يوجد وصف'}\n"
-                f"🏫 **المرحلة:** {material.stage}\n"
-                f"📊 **الموضوع:** {material.subject or 'عام'}\n"
-                f"⬇️ **عدد التحميلات:** {material.downloads + 1}\n\n"
-                f"🎓 **بوت 'يلا نتعلم'**"
-            )
-            
-            await context.bot.send_document(
-                chat_id=user_id,
-                document=material.file_id,
-                caption=caption,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"{self.get_emoji('back')} رجوع",
-                            callback_data=f'material_stage_{material.stage}'
-                        )
-                    ]
-                ])
-            )
-            
-            # زيادة عدد التحميلات
-            self.db.increment_material_downloads(material_id)
-            
-        except Exception as e:
-            logger.error(f"❌ خطأ في إرسال الملف: {e}")
-            await query.edit_message_text(
-                self.format_arabic_text("⚠️ **حدث خطأ في إرسال الملف.**"),
-                parse_mode=ParseMode.MARKDOWN
-            )
-    
-    # ========== دوال الرصيد والإحالة ==========
-    async def show_balance_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض قائمة الرصيد"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على بيانات المستخدم
-        user_data = self.db.get_user(user_id)
-        if not user_data:
-            await self.show_main_menu(update, context)
-            return
-        
-        # الحصول على آخر المعاملات
-        transactions = self.db.get_user_transactions(user_id, limit=10)
-        
-        # تنسيق المعاملات
-        transactions_text = ""
-        if transactions:
-            for trans in transactions:
-                amount_text = f"+{abs(trans.amount)}" if trans.amount > 0 else f"-{abs(trans.amount)}"
-                date_text = trans.date[:16] if trans.date else "غير معروف"
-                
-                transactions_text += (
-                    f"• {amount_text} - {trans.description} ({date_text})\n"
-                )
-        else:
-            transactions_text = "لا توجد معاملات سابقة.\n"
-        
-        text = self.format_arabic_text(
-            f"💰 **رصيدك الحالي**\n\n"
-            f"💳 **المبلغ:** {self.format_currency(user_data.balance)}\n"
-            f"👤 **المستخدم:** {user_data.first_name} {user_data.last_name or ''}\n"
-            f"🆔 **المعرف:** {user_data.user_id}\n"
-            f"📅 **تاريخ الانضمام:** {user_data.join_date[:10]}\n\n"
-            f"📊 **آخر المعاملات:**\n{transactions_text}"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('money')} شحن الرصيد",
-                    callback_data='charge_balance'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('users')} دعوة أصدقاء",
-                    callback_data='invite_friends'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='back_to_menu'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def show_charge_options(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض خيارات شحن الرصيد"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على بيانات المستخدم
-        user_data = self.db.get_user(user_id)
-        if not user_data:
-            await self.show_main_menu(update, context)
-            return
-        
-        text = self.format_arabic_text(
-            f"💰 **شحن الرصيد**\n\n"
-            f"💳 **رصيدك الحالي:** {self.format_currency(user_data.balance)}\n\n"
-            f"**طرق الشحن:**\n"
-            f"1. **التواصل مع الدعم:** {self.support_username}\n"
-            f"2. **دعوة الأصدقاء:** احصل على مكافأة لكل صديق\n\n"
-            f"**لشحن الرصيد:**\n"
-            f"1. تواصل مع الدعم: @Allawi04@\n"
-            f"2. أرسل إيديك: `{user_id}`\n"
-            f"3. حدد المبلغ المراد شحنه\n"
-            f"4. انتظر تأكيد الشحن\n\n"
-            f"📞 **الدعم متاح:** 9 صباحاً - 10 مساءً"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('users')} دعوة أصدقاء",
-                    callback_data='invite_friends'
-                ),
-                InlineKeyboardButton(
-                    f"👤 التواصل مع الدعم",
-                    url=f"https://t.me/{self.support_username.replace('@', '')}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='my_balance'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def show_invite_friends(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض قائمة دعوة الأصدقاء"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على بيانات المستخدم
-        user_data = self.db.get_user(user_id)
-        if not user_data:
-            await self.show_main_menu(update, context)
-            return
-        
-        # إنشاء رابط الدعوة
-        invite_link = f"https://t.me/{self.bot_username.replace('@', '')}?start={user_data.referral_code}"
-        
-        # الحصول على عدد الإحالات
-        self.db.cursor.execute('SELECT COUNT(*) FROM users WHERE referred_by = ?', (user_data.referral_code,))
-        referral_count = self.db.cursor.fetchone()[0] or 0
-        
-        text = self.format_arabic_text(
-            f"👥 **دعوة الأصدقاء**\n\n"
-            f"💰 **مكافأة الإحالة:** {self.db.get_setting('referral_bonus', '500')} دينار\n"
-            f"🎁 **هدية الصديق:** {self.db.get_setting('welcome_bonus', '1000')} دينار\n"
-            f"📊 **عدد الإحالات:** {referral_count}\n\n"
-            f"**كيفية الدعوة:**\n"
-            f"1. أرسل الرابط أدناه لأصدقائك\n"
-            f"2. عندما ينضم صديقك عبر الرابط\n"
-            f"3. تحصل على {self.db.get_setting('referral_bonus', '500')} دينار\n"
-            f"4. صديقك يحصل على {self.db.get_setting('welcome_bonus', '1000')} دينار\n\n"
-            f"🔗 **رابط الدعوة:**\n`{invite_link}`"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('share')} مشاركة الرابط",
-                    url=f"https://t.me/share/url?url={urllib.parse.quote(invite_link)}&text=انضم%20إلى%20بوت%20'يلا%20نتعلم'%20للطلاب!"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='my_balance'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def show_user_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض إحصائيات المستخدم"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على بيانات المستخدم
-        user_data = self.db.get_user(user_id)
-        if not user_data:
-            await self.show_main_menu(update, context)
-            return
-        
-        # الحصول على إحصائيات إضافية
-        self.db.cursor.execute('''
-            SELECT COUNT(*) FROM service_usage WHERE user_id = ?
-        ''', (user_id,))
-        service_usage = self.db.cursor.fetchone()[0] or 0
-        
-        self.db.cursor.execute('''
-            SELECT COUNT(*) FROM users WHERE referred_by = ?
-        ''', (user_data.referral_code,))
-        referrals_count = self.db.cursor.fetchone()[0] or 0
-        
-        text = self.format_arabic_text(
-            f"📊 **إحصائياتك**\n\n"
-            f"👤 **الاسم:** {user_data.first_name} {user_data.last_name or ''}\n"
-            f"🆔 **المعرف:** {user_data.user_id}\n"
-            f"💰 **الرصيد:** {self.format_currency(user_data.balance)}\n"
-            f"💸 **إجمالي الإنفاق:** {self.format_currency(user_data.total_spent)}\n"
-            f"💎 **إجمالي الأرباح:** {self.format_currency(user_data.total_earned)}\n"
-            f"📅 **تاريخ الانضمام:** {user_data.join_date[:10]}\n"
-            f"🕐 **آخر نشاط:** {user_data.last_active[:16] if user_data.last_active else 'غير معروف'}\n\n"
-            f"📈 **إحصائيات النشاط:**\n"
-            f"• **عدد استخدامات الخدمات:** {service_usage}\n"
-            f"• **عدد الإحالات:** {referrals_count}\n"
-            f"• **عدد الجلسات:** {user_data.session_count}\n"
-            f"• **عدد الرسائل:** {user_data.total_messages}\n\n"
-            f"🔗 **كود الإحالة:** `{user_data.referral_code}`"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('users')} دعوة أصدقاء",
-                    callback_data='invite_friends'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='back_to_menu'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    # ========== دوال الدعم والمساعدة ==========
-    async def show_help_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض قائمة المساعدة"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على أسعار الخدمات
-        services = self.db.get_services()
-        services_text = ""
-        for service in services:
-            if service.price > 0:
-                services_text += f"• **{service.name}:** {self.format_currency(service.price)}\n"
-            else:
-                services_text += f"• **{service.name}:** مجاناً\n"
-        
-        text = self.format_arabic_text(
-            f"ℹ️ **المساعدة والاستفسارات**\n\n"
-            f"🎓 **عن البوت:**\n"
-            f"بوت 'يلا نتعلم' هو بوت تعليمي للطلاب العراقيين يوفر خدمات تعليمية متنوعة باستخدام الذكاء الاصطناعي المتقدم.\n\n"
-            f"💰 **أسعار الخدمات:**\n{services_text}\n"
-            f"🔗 **رابط البوت:** @{self.bot_username.replace('@', '')}\n\n"
-            f"📞 **الدعم الفني:**\n"
-            f"• **الدعم:** @Allawi04@\n"
-            f"• **وقت الاستجابة:** 9 صباحاً - 10 مساءً\n\n"
-            f"⚙️ **كيفية الاستخدام:**\n"
-            f"1. اختر الخدمة من القائمة الرئيسية\n"
-            f"2. اتبع التعليمات الظاهرة\n"
-            f"3. تأكد من وجود رصيد كافٍ للخدمات المدفوعة\n"
-            f"4. استمتع بالخدمات التعليمية المتقدمة"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('wrench')} الدعم الفني",
-                    callback_data='support'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='back_to_menu'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def show_support_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض قائمة الدعم"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على إعدادات القناة
-        bot_channel = self.db.get_setting('bot_channel', '')
-        
-        channel_text = ""
-        if bot_channel:
-            channel_text = f"📢 **قناة البوت:** {bot_channel}\n\n"
-        
-        text = self.format_arabic_text(
-            f"🛠 **الدعم الفني**\n\n"
-            f"📞 **للشحن أو الاستفسارات أو المشاكل الفنية:**\n"
-            f"• **الدعم:** @Allawi04@\n\n"
-            f"{channel_text}"
-            f"⏰ **وقت الاستجابة:**\n"
-            f"• **أيام الأسبوع:** 9 صباحاً - 10 مساءً\n"
-            f"• **الجمعة:** 2 ظهراً - 10 مساءً\n\n"
-            f"💡 **نصائح للتواصل:**\n"
-            f"1. تأكد من إرسال إيديك عند التواصل\n"
-            f"2. اشرح مشكلتك بوضوح\n"
-            f"3. أرفق صوراً إذا لزم الأمر\n"
-            f"4. تحلى بالصبر أثناء الرد"
-        )
-        
-        keyboard = []
-        
-        if bot_channel:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{self.get_emoji('megaphone')} قناة البوت",
-                    url=bot_channel
-                )
-            ])
-        
-        keyboard.append([
-            InlineKeyboardButton(
-                f"👤 التواصل مع الدعم",
-                url=f"https://t.me/{self.support_username.replace('@', '')}"
-            )
-        ])
-        
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{self.get_emoji('back')} رجوع",
-                callback_data='help'
-            )
-        ])
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    # ========== دوال لوحة التحكم (للمدير فقط) ==========
-    async def show_admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض لوحة التحكم"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            await query.answer("⛔ غير مصرح لك بالدخول!", show_alert=True)
-            return
-        
-        await query.answer()
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على إحصائيات البوت
-        stats = self.db.get_statistics(1)  # إحصائيات آخر يوم
-        
-        total_users = self.db.get_user_count()
-        total_balance = self.db.get_total_balance()
-        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
-        
-        text = self.format_arabic_text(
-            f"👑 **لوحة التحكم**\n\n"
-            f"📊 **إحصائيات البوت:**\n"
-            f"• **إجمالي المستخدمين:** {total_users}\n"
-            f"• **إجمالي الأرصدة:** {self.format_currency(total_balance)}\n"
-            f"• **وضع الصيانة:** {'✅ مفعل' if maintenance_mode else '❌ غير مفعل'}\n\n"
-            f"📈 **إحصائيات اليوم:**\n"
-            f"• **المستخدمين الجدد:** {stats.get('daily_stats', [{}])[0].get('new_users', 0) if stats.get('daily_stats') else 0}\n"
-            f"• **المستخدمين النشطين:** {stats.get('daily_stats', [{}])[0].get('active_users', 0) if stats.get('daily_stats') else 0}\n"
-            f"• **الدخل اليومي:** {self.format_currency(stats.get('daily_stats', [{}])[0].get('total_income', 0) if stats.get('daily_stats') else 0)}\n\n"
-            f"اختر القسم المطلوب:"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('users')} إدارة المستخدمين",
-                    callback_data='admin_users'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('money')} إدارة الشحن",
-                    callback_data='admin_charge'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('gear')} إدارة الخدمات",
-                    callback_data='admin_services'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('book')} إدارة الملازم",
-                    callback_data='admin_materials'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('settings')} إعدادات البوت",
-                    callback_data='admin_settings'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('chart')} إحصائيات مفصلة",
-                    callback_data='admin_stats'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع للقائمة",
-                    callback_data='back_to_menu'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_manage_users(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة المستخدمين"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        text = self.format_arabic_text(
-            "👥 **إدارة المستخدمين**\n\n"
-            "اختر الإجراء المطلوب:"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('list')} عرض جميع المستخدمين",
-                    callback_data='admin_list_users'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('search')} بحث عن مستخدم",
-                    callback_data='admin_search_user'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('ban')} حظر مستخدم",
-                    callback_data='admin_ban_user'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('unlock')} فك حظر مستخدم",
-                    callback_data='admin_unban_user'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='admin_panel'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_charge_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة الشحن"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        text = self.format_arabic_text(
-            "💰 **إدارة الشحن**\n\n"
-            "اختر الإجراء المطلوب:"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('moneybag')} شحن رصيد مستخدم",
-                    callback_data='admin_add_balance'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('credit_card')} خصم رصيد مستخدم",
-                    callback_data='admin_deduct_balance'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('gift')} تغيير مكافأة الإحالة",
-                    callback_data='admin_change_referral_bonus'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('present')} تغيير الهدية الترحيبية",
-                    callback_data='admin_change_welcome_bonus'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='admin_panel'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_manage_services(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة الخدمات"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        # الحصول على أسعار الخدمات
-        services = self.db.get_services()
-        services_text = ""
-        for service in services:
-            services_text += f"• **{service.name}:** {self.format_currency(service.price)}\n"
-        
-        text = self.format_arabic_text(
-            f"⚙️ **إدارة الخدمات**\n\n"
-            f"💰 **الأسعار الحالية:**\n{services_text}\n"
-            f"اختر الخدمة المراد تعديل سعرها:"
-        )
-        
-        keyboard = []
-        for service in services:
-            if service.price > 0:  # الخدمات المدفوعة فقط
-                keyboard.append([
-                    InlineKeyboardButton(
-                        f"{self.get_emoji('gear')} {service.name} - {self.format_currency(service.price)}",
-                        callback_data=f'admin_change_price_{service.id}'
-                    )
-                ])
-        
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{self.get_emoji('back')} رجوع",
-                callback_data='admin_panel'
-            )
-        ])
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_manage_materials(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة الملازم"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        text = self.format_arabic_text(
-            "📚 **إدارة الملازم**\n\n"
-            "اختر الإجراء المطلوب:"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('plus')} إضافة مادة جديدة",
-                    callback_data='admin_add_material'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('trash')} حذف مادة",
-                    callback_data='admin_delete_material'
-                ),
-                InlineKeyboardButton(
-                    f"{self.get_emoji('list')} عرض جميع المواد",
-                    callback_data='admin_list_materials'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='admin_panel'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_manage_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إعدادات البوت"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        maintenance = self.db.get_setting('maintenance_mode', 'false') == 'true'
-        bot_channel = self.db.get_setting('bot_channel', '')
-        
-        text = self.format_arabic_text(
-            f"🔧 **إعدادات البوت**\n\n"
-            f"⚙️ **الإعدادات الحالية:**\n"
-            f"• **وضع الصيانة:** {'✅ مفعل' if maintenance else '❌ غير مفعل'}\n"
-            f"• **قناة البوت:** {bot_channel if bot_channel else 'غير مضبوطة'}\n\n"
-            f"اختر الإجراء المطلوب:"
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{'❌ تعطيل' if maintenance else '✅ تفعيل'} وضع الصيانة",
-                    callback_data='admin_toggle_maintenance'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('megaphone')} تغيير قناة البوت",
-                    callback_data='admin_change_channel'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='admin_panel'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_show_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض إحصائيات مفصلة"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        await self.send_typing(user_id, context)
-        
-        # تحديث الإحصائيات أولاً
-        self.db.update_statistics()
-        
-        # الحصول على إحصائيات مفصلة
-        stats = self.db.get_statistics(7)  # آخر 7 أيام
-        
-        # تنسيق إحصائيات الأيام
-        daily_stats_text = ""
-        if stats.get('daily_stats'):
-            for day_stat in stats['daily_stats']:
-                daily_stats_text += (
-                    f"📅 **{day_stat['date']}:**\n"
-                    f"  👥 جديد: {day_stat['new_users']} | نشيط: {day_stat['active_users']}\n"
-                    f"  💰 دخل: {self.format_currency(day_stat['total_income'])}\n"
-                    f"  📊 استخدام: {day_stat['service_usage_count']}\n\n"
-                )
-        else:
-            daily_stats_text = "لا توجد بيانات كافية.\n"
-        
-        text = self.format_arabic_text(
-            f"📈 **إحصائيات مفصلة**\n\n"
-            f"📊 **إحصائيات عامة:**\n"
-            f"• **إجمالي المستخدمين:** {stats.get('total_users', 0)}\n"
-            f"• **إجمالي الأرصدة:** {self.format_currency(stats.get('total_balance', 0))}\n"
-            f"• **إجمالي الدخل:** {self.format_currency(stats.get('total_income', 0))}\n\n"
-            f"📅 **إحصائيات آخر 7 أيام:**\n{daily_stats_text}"
-            f"📋 **ملاحظة:** يتم تحديث الإحصائيات تلقائياً كل 24 ساعة."
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('refresh')} تحديث الإحصائيات",
-                    callback_data='admin_stats'
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    f"{self.get_emoji('back')} رجوع",
-                    callback_data='admin_panel'
-                )
-            ]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    async def admin_handle_text_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة إدخالات النص للمدير"""
-        user_id = update.effective_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        if user_id not in self.admin_commands:
-            return
-        
-        command = self.admin_commands[user_id]
-        text = update.message.text.strip()
-        
-        # معالجة إدخال المستخدم للإضافة المباشرة للرصيد
-        if command == 'add_balance_user':
-            try:
-                target_user_id = int(text)
-                self.admin_commands[user_id] = {
-                    'action': 'add_balance_amount',
-                    'target_user_id': target_user_id
-                }
-                
-                await update.message.reply_text(
-                    self.format_arabic_text(
-                        f"✅ **تم تحديد المستخدم:** {target_user_id}\n\n"
-                        f"أدخل المبلغ المراد إضافته:"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-            except:
-                await update.message.reply_text(
-                    self.format_arabic_text("⚠️ **الرجاء إدخال إيدي مستخدم صحيح.**"),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-        
-        elif isinstance(command, dict) and command.get('action') == 'add_balance_amount':
-            try:
-                amount = int(text)
-                target_user_id = command['target_user_id']
-                
-                if amount <= 0:
-                    await update.message.reply_text(
-                        self.format_arabic_text("⚠️ **الرجاء إدخال مبلغ أكبر من الصفر.**"),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    return
-                
-                # شحن الرصيد
-                user = self.db.get_user(target_user_id)
-                if not user:
-                    await update.message.reply_text(
-                        self.format_arabic_text("⚠️ **المستخدم غير موجود.**"),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    del self.admin_commands[user_id]
-                    return
-                
-                # تحديث الرصيد
-                self.db.update_user_balance(target_user_id, amount)
-                self.db.add_transaction(
-                    target_user_id, amount, 'admin_charge',
-                    f'شحن من المدير: {user_id}'
-                )
-                
-                # إرسال إشعار للمستخدم
-                try:
-                    await context.bot.send_message(
-                        chat_id=target_user_id,
-                        text=self.format_arabic_text(
-                            f"🎉 **تم شحن رصيدك!**\n\n"
-                            f"💰 **المبلغ:** {self.format_currency(amount)}\n"
-                            f"💳 **الرصيد الجديد:** {self.format_currency(user.balance + amount)}\n\n"
-                            f"👑 **بواسطة:** المدير\n"
-                            f"🎓 **بوت 'يلا نتعلم'**"
-                        ),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                except:
-                    pass
-                
-                await update.message.reply_text(
-                    self.format_arabic_text(
-                        f"✅ **تم الشحن بنجاح!**\n\n"
-                        f"👤 **المستخدم:** {user.first_name} {user.last_name or ''}\n"
-                        f"🆔 **الإيدي:** {target_user_id}\n"
-                        f"💰 **المبلغ:** {self.format_currency(amount)}\n"
-                        f"💳 **الرصيد الجديد:** {self.format_currency(user.balance + amount)}"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} لوحة التحكم",
-                                callback_data='admin_panel'
-                            )
-                        ]
-                    ])
-                )
-                
-                # تنظيف الأمر
-                del self.admin_commands[user_id]
-                
-            except:
-                await update.message.reply_text(
-                    self.format_arabic_text("⚠️ **الرجاء إدخال مبلغ صحيح.**"),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-        
-        # معالجة تغيير سعر الخدمة
-        elif isinstance(command, dict) and command.get('action') == 'change_price':
-            try:
-                new_price = int(text)
-                service_id = command['service_id']
-                
-                if new_price < 0:
-                    await update.message.reply_text(
-                        self.format_arabic_text("⚠️ **السعر يجب أن يكون عدداً صحيحاً موجباً.**"),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    return
-                
-                # تحديث السعر
-                service = self.db.get_service(service_id)
-                if not service:
-                    await update.message.reply_text(
-                        self.format_arabic_text("⚠️ **الخدمة غير موجودة.**"),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    del self.admin_commands[user_id]
-                    return
-                
-                self.db.update_service_price(service_id, new_price)
-                
-                await update.message.reply_text(
-                    self.format_arabic_text(
-                        f"✅ **تم تغيير السعر بنجاح!**\n\n"
-                        f"📝 **الخدمة:** {service.name}\n"
-                        f"💰 **السعر القديم:** {self.format_currency(service.price)}\n"
-                        f"💰 **السعر الجديد:** {self.format_currency(new_price)}"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} لوحة التحكم",
-                                callback_data='admin_panel'
-                            )
-                        ]
-                    ])
-                )
-                
-                # تنظيف الأمر
-                del self.admin_commands[user_id]
-                
-            except:
-                await update.message.reply_text(
-                    self.format_arabic_text("⚠️ **الرجاء إدخال سعر صحيح.**"),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-    
-    async def admin_handle_document_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة الملفات للمدير"""
-        user_id = update.effective_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        if user_id not in self.admin_commands:
-            return
-        
-        command = self.admin_commands[user_id]
-        
-        # معالجة إضافة مادة جديدة
-        if isinstance(command, dict) and command.get('action') == 'add_material_file':
-            if not update.message.document:
-                await update.message.reply_text(
-                    self.format_arabic_text("⚠️ **الرجاء إرسال ملف PDF.**"),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
-            
-            if not update.message.document.file_name.endswith('.pdf'):
-                await update.message.reply_text(
-                    self.format_arabic_text("⚠️ **الرجاء إرسال ملف PDF فقط.**"),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
-            
-            # الحصول على بيانات المادة من الأمر
-            name = command.get('name', '')
-            description = command.get('description', '')
-            stage = command.get('stage', '')
-            subject = command.get('subject', 'عام')
-            
-            # إضافة المادة إلى قاعدة البيانات
-            material_id = self.db.add_material(
-                name=name,
-                description=description,
-                file_id=update.message.document.file_id,
-                stage=stage,
-                subject=subject,
-                file_size=update.message.document.file_size,
-                added_by=user_id
-            )
-            
-            if material_id:
-                await update.message.reply_text(
-                    self.format_arabic_text(
-                        f"✅ **تمت إضافة المادة بنجاح!**\n\n"
-                        f"📚 **الاسم:** {name}\n"
-                        f"📖 **الوصف:** {description}\n"
-                        f"🏫 **المرحلة:** {stage}\n"
-                        f"📊 **الموضوع:** {subject}\n"
-                        f"📄 **اسم الملف:** {update.message.document.file_name}\n"
-                        f"💾 **حجم الملف:** {update.message.document.file_size / 1024:.1f} كيلوبايت"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} لوحة التحكم",
-                                callback_data='admin_panel'
-                            )
-                        ]
-                    ])
-                )
-            else:
-                await update.message.reply_text(
-                    self.format_arabic_text("⚠️ **حدث خطأ في إضافة المادة.**"),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-            
-            # تنظيف الأمر
-            del self.admin_commands[user_id]
-    
-    # ========== دوال معالجة الأزرار العامة ==========
-    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة جميع الضغطات على الأزرار"""
-        query = update.callback_query
-        data = query.data
-        
-        # تجاهل الاستعلامات القديمة
-        if not query.message:
-            await query.answer()
-            return
-        
-        try:
-            # القائمة الرئيسية والعودة
-            if data == 'back_to_menu':
-                await self.show_main_menu(update, context)
-            
-            # الخدمات
-            elif data == 'service_excuse':
-                await self.handle_excuse_service(update, context)
-            elif data == 'service_summary':
-                await self.handle_summary_service(update, context)
-            elif data == 'service_qa':
-                await self.handle_qa_service(update, context)
-            
-            # الملازم
-            elif data == 'materials':
-                await self.show_materials_menu(update, context)
-            elif data.startswith('material_stage_'):
-                await self.show_materials_by_stage(update, context)
-            elif data.startswith('material_'):
-                await self.send_material_file(update, context)
-            
-            # الرصيد والإحالة
-            elif data == 'my_balance':
-                await self.show_balance_menu(update, context)
-            elif data == 'charge_balance':
-                await self.show_charge_options(update, context)
-            elif data == 'invite_friends':
-                await self.show_invite_friends(update, context)
-            elif data == 'my_stats':
-                await self.show_user_stats(update, context)
-            
-            # الدعم والمساعدة
-            elif data == 'help':
-                await self.show_help_menu(update, context)
-            elif data == 'support':
-                await self.show_support_menu(update, context)
-            
-            # لوحة التحكم
-            elif data == 'admin_panel':
-                await self.show_admin_panel(update, context)
-            elif data == 'admin_users':
-                await self.admin_manage_users(update, context)
-            elif data == 'admin_charge':
-                await self.admin_charge_management(update, context)
-            elif data == 'admin_services':
-                await self.admin_manage_services(update, context)
-            elif data == 'admin_materials':
-                await self.admin_manage_materials(update, context)
-            elif data == 'admin_settings':
-                await self.admin_manage_settings(update, context)
-            elif data == 'admin_stats':
-                await self.admin_show_stats(update, context)
-            
-            # إدارة المستخدمين
-            elif data == 'admin_list_users':
-                await self.admin_show_user_list(update, context)
-            elif data == 'admin_add_balance':
-                self.admin_commands[query.from_user.id] = 'add_balance_user'
-                await query.edit_message_text(
-                    self.format_arabic_text(
-                        "💰 **شحن رصيد مستخدم**\n\n"
-                        "أرسل إيدي المستخدم المراد شحن رصيده:"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-            
-            # تغيير الأسعار
-            elif data.startswith('admin_change_price_'):
-                service_id = int(data.replace('admin_change_price_', ''))
-                self.admin_commands[query.from_user.id] = {
-                    'action': 'change_price',
-                    'service_id': service_id
-                }
-                
-                service = self.db.get_service(service_id)
-                if service:
-                    await query.edit_message_text(
-                        self.format_arabic_text(
-                            f"💰 **تغيير سعر الخدمة**\n\n"
-                            f"📝 **الخدمة:** {service.name}\n"
-                            f"💰 **السعر الحالي:** {self.format_currency(service.price)}\n\n"
-                            f"أرسل السعر الجديد:"
-                        ),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-            
-            # الإعدادات
-            elif data == 'admin_toggle_maintenance':
-                current = self.db.get_setting('maintenance_mode', 'false')
-                new_value = 'false' if current == 'true' else 'true'
-                self.db.update_setting('maintenance_mode', new_value)
-                
-                status = "✅ تم تفعيل وضع الصيانة" if new_value == 'true' else "❌ تم تعطيل وضع الصيانة"
-                
-                await query.edit_message_text(
-                    self.format_arabic_text(status),
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton(
-                                f"{self.get_emoji('back')} رجوع",
-                                callback_data='admin_settings'
-                            )
-                        ]
-                    ])
-                )
-            
-            # إذا كان الزر غير معروف
-            else:
-                await query.answer("⚠️ هذا الزر غير مفعل حالياً", show_alert=True)
-                
-        except Exception as e:
-            logger.error(f"❌ خطأ في معالجة الزر: {data} - {e}")
-            await query.answer("⚠️ حدث خطأ في المعالجة", show_alert=True)
-    
-    async def admin_show_user_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض قائمة المستخدمين"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        if not self.is_admin(user_id):
-            return
-        
-        await query.answer()
-        
-        await self.send_typing(user_id, context)
-        
-        # الحصول على المستخدمين
-        users = self.db.get_all_users(limit=20)
-        
-        if not users:
-            text = self.format_arabic_text("📋 **لا يوجد مستخدمين بعد.**")
-        else:
-            users_text = ""
-            for i, user in enumerate(users, 1):
-                status = "⛔ محظور" if user.is_banned else "✅ نشط"
-                users_text += (
-                    f"{i}. **{user.first_name} {user.last_name or ''}**\n"
-                    f"   👤 @{user.username or 'بدون'} | 🆔 {user.user_id}\n"
-                    f"   💰 {self.format_currency(user.balance)} | {status}\n"
-                    f"   📅 {user.join_date[:10]}\n\n"
-                )
-            
-            text = self.format_arabic_text(
-                f"📋 **آخر 20 مستخدم**\n\n{users_text}"
-            )
-        
-        await query.edit_message_text(
-            text,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        f"{self.get_emoji('back')} رجوع",
-                        callback_data='admin_users'
-                    )
-                ]
-            ])
-        )
-    
-    # ========== دوال معالجة الرسائل ==========
-    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة الرسائل النصية"""
-        user = update.effective_user
-        user_id = user.id
-        
-        # التحقق من وضع الصيانة
-        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
-        if maintenance_mode and not self.is_admin(user_id):
-            await update.message.reply_text(
-                self.format_arabic_text(
-                    "⛔ **البوت تحت الصيانة حالياً**\n\n"
-                    "نعمل على تحسين الخدمات وإضافة ميزات جديدة.\n"
-                    "الرجاء المحاولة مرة أخرى لاحقاً.\n\n"
-                    "🛠 للاستفسار: @Allawi04@"
-                ),
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-        
-        # التحقق من الحظر
-        user_data = self.db.get_user(user_id)
-        if user_data and user_data.is_banned:
-            await update.message.reply_text(
-                self.format_arabic_text(
-                    "⛔ **حسابك محظور**\n\n"
-                    "لا يمكنك استخدام البوت حالياً.\n"
-                    "للتواصل مع الدعم: @Allawi04@"
-                ),
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-        
-        # تحديث إحصائيات المستخدم
-        if user_data:
-            self.db.update_user(
-                user_id,
-                last_active=datetime.datetime.now().isoformat(),
-                total_messages=user_data.total_messages + 1
-            )
-        
-        # معالجة الأوامر الإدارية
-        if self.is_admin(user_id) and user_id in self.admin_commands:
-            await self.admin_handle_text_input(update, context)
-            return
-        
-        # معالجة جلسات الخدمات
-        if user_id in self.user_sessions:
-            session = self.user_sessions[user_id]
-            
-            if session['service'] == 'excuse':
-                await self.handle_excuse_score(update, context)
-                return
-            elif session['service'] == 'qa' and session.get('waiting_for_question'):
-                # تم معالجته في handle_qa_question
-                return
-        
-        # إذا لم تكن رسالة خاصة، عرض القائمة
-        await self.show_main_menu(update, context)
-    
-    async def handle_document_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة الملفات المرسلة"""
-        user = update.effective_user
-        user_id = user.id
-        
-        # التحقق من وضع الصيانة والحظر
-        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
-        user_data = self.db.get_user(user_id)
-        
-        if maintenance_mode and not self.is_admin(user_id):
-            return
-        if user_data and user_data.is_banned:
-            return
-        
-        # معالجة ملفات المدير
-        if self.is_admin(user_id) and user_id in self.admin_commands:
-            await self.admin_handle_document_input(update, context)
-            return
-        
-        # معالجة ملفات PDF للتلخيص
-        if user_id in self.user_sessions and self.user_sessions[user_id].get('waiting_for_file'):
-            await self.handle_pdf_file(update, context)
-            return
-    
-    async def handle_photo_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة الصور المرسلة"""
-        user = update.effective_user
-        user_id = user.id
-        
-        # التحقق من وضع الصيانة والحظر
-        maintenance_mode = self.db.get_setting('maintenance_mode', 'false') == 'true'
-        user_data = self.db.get_user(user_id)
-        
-        if maintenance_mode and not self.is_admin(user_id):
-            return
-        if user_data and user_data.is_banned:
-            return
-        
-        # معالجة صور خدمة سؤال وجواب
-        if user_id in self.user_sessions and self.user_sessions[user_id].get('waiting_for_question'):
-            await self.handle_qa_question(update, context)
-            return
+            await self.menu_command(update, context)
     
     # ========== دوال التشغيل والإغلاق ==========
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4441,7 +3559,8 @@ class YallaNt3lemBot:
                             "نعتذر عن هذا الخطأ. الرجاء المحاولة مرة أخرى لاحقاً.\n"
                             "إذا تكرر الخطأ، يرجى التواصل مع الدعم: @Allawi04@"
                         ),
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=self.main_keyboard
                     )
             except:
                 pass
@@ -4483,6 +3602,15 @@ class YallaNt3lemBot:
         
         logger.info("✅ تم إعداد المهام المجدولة")
     
+    async def setup_bot_commands(self):
+        """إعداد أوامر البوت"""
+        commands = []
+        for cmd, description in Constants.BOT_COMMANDS:
+            commands.append(BotCommand(cmd, description))
+        
+        await self.application.bot.set_my_commands(commands)
+        logger.info("✅ تم إعداد أوامر البوت")
+    
     async def run(self):
         """تشغيل البوت"""
         try:
@@ -4494,17 +3622,23 @@ class YallaNt3lemBot:
             
             self.job_queue = self.application.job_queue
             
+            # إعداد أوامر البوت
+            await self.setup_bot_commands()
+            
             # إضافة المعالجات
             self.application.add_handler(CommandHandler("start", self.start_command))
-            self.application.add_handler(CommandHandler("menu", self.show_main_menu))
+            self.application.add_handler(CommandHandler("menu", self.menu_command))
+            self.application.add_handler(CommandHandler("balance", self.show_balance_info))
+            self.application.add_handler(CommandHandler("materials", self.show_materials_menu))
+            self.application.add_handler(CommandHandler("help", self.show_help_info))
+            self.application.add_handler(CommandHandler("support", self.show_support_info))
             
-            # معالجة الأزرار
-            self.application.add_handler(CallbackQueryHandler(self.handle_callback_query))
+            # معالجة الرسائل النصية (بما في ذلك الأزرار)
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_messages))
             
-            # معالجة الرسائل
-            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_message))
-            self.application.add_handler(MessageHandler(filters.Document.PDF, self.handle_document_message))
-            self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_photo_message))
+            # معالجة الملفات والصور
+            self.application.add_handler(MessageHandler(filters.Document.PDF, self.handle_document_messages))
+            self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_photo_messages))
             
             # معالجة الأخطاء
             self.application.add_error_handler(self.error_handler)
@@ -4517,10 +3651,14 @@ class YallaNt3lemBot:
             print("=" * 60)
             print("🎓 بوت 'يلا نتعلم' يعمل بنجاح!")
             print(f"🤖 يوزر البوت: {self.bot_username}")
+            print(f"🔑 التوكن الجديد: {self.token[:20]}...")
             print(f"👑 المدير: {self.admin_id}")
             print(f"🛠 الدعم: {self.support_username}")
             print(f"📊 المستخدمين: {self.db.get_user_count()}")
             print(f"💰 إجمالي الأرصدة: {self.format_currency(self.db.get_total_balance())}")
+            print("=" * 60)
+            print("📱 الأزرار فوق الرسائل مفعلة بالكامل!")
+            print("🎯 يمكن للمستخدمين استخدام الأزرار بسهولة!")
             print("=" * 60)
             
             # التشغيل
