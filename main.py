@@ -75,7 +75,7 @@ def http_request(url: str, method: str = "GET", headers: Dict = None,
 # إعدادات البوت
 # ============================================================================
 
-TOKEN = "8481569753:AAH3alhJ0hcHldht-PxV7j8TzBlRsMqAqGI"
+TOKEN = "8279341291:AAGet-xHKrmSg1RuBYaaNuzmaqv1LgwUM6E"
 BOT_USERNAME = "@FC4Xbot"
 ADMIN_ID = 6130994941
 SUPPORT_USER = "Allawi04@"
