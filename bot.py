@@ -96,9 +96,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOKEN = "8481569753:AAH3alhJ0hcHldht-PxV7j8TzBlRsMqAqGI"
-BOT_USERNAME = "@FC4Xbot"
+BOT_USERNAME = "FC4Xbot"
 ADMIN_ID = 6130994941
-SUPPORT_USERNAME = "Allawi04@"
+SUPPORT_USERNAME = "@Allawi04"
 CHANNEL_USERNAME = "@FCJCV"
 GEMINI_API_KEY = "AIzaSyARsl_YMXA74bPQpJduu0jJVuaku7MaHuY"
 
