@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-بوت تليجرام: يلا نتعلم - الإصدار النهائي الكامل (مصحح)
+بوت تليجرام: يلا نتعلم - الإصدار النهائي الكامل (مصحح كاملاً)
 مطور البوت: @Allawi04
 ايدي المطور: 6130994941
 توكن البوت: 8279341291:AAGet-xHKrmSg1RuBYaaNuzmaqv1LgwUM6E
@@ -25,6 +25,8 @@ from io import BytesIO
 import base64
 import random
 import string
+import asyncio
+import traceback
 
 # مكتبات تليجرام
 from telegram import (
@@ -38,7 +40,7 @@ from telegram.ext import (
     ConversationHandler
 )
 from telegram.constants import ParseMode, ChatAction
-from telegram.error import TelegramError
+from telegram.error import TelegramError, BadRequest
 
 # مكتبات معالجة PDF
 try:
@@ -75,7 +77,6 @@ except ImportError:
 
 import io
 import textwrap
-import asyncio
 
 # ====================== إعدادات البوت ======================
 BOT_TOKEN = "8279341291:AAGet-xHKrmSg1RuBYaaNuzmaqv1LgwUM6E"
@@ -376,6 +377,19 @@ class Database:
         ''', (ADMIN_ID, 'Allawi04', 'المشرف', 'الرئيسي', 0, 1, 1))
         
         self.conn.commit()
+    
+    def backup_database(self):
+        """إنشاء نسخة احتياطية من قاعدة البيانات"""
+        try:
+            backup_file = f"yalla_nt3lm_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            backup_conn = sqlite3.connect(backup_file)
+            self.conn.backup(backup_conn)
+            backup_conn.close()
+            logger.info(f"تم إنشاء نسخة احتياطية: {backup_file}")
+            return backup_file
+        except Exception as e:
+            logger.error(f"فشل في إنشاء النسخة الاحتياطية: {e}")
+            return None
     
     def add_user(self, user_id, username, first_name, last_name, invited_by=0):
         """إضافة مستخدم جديد مع جميع التحققيات"""
@@ -1429,132 +1443,193 @@ def get_main_menu_keyboard(user_id):
 # ====================== معالجات الأوامر الرئيسية ======================
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج أمر /start - محسن"""
-    user = update.effective_user
+    try:
+        user = update.effective_user
+        
+        if db.get_maintenance_mode() and not is_admin(user.id):
+            await update.message.reply_text("⚙️ البوت في وضع الصيانة حالياً. يرجى المحاولة لاحقاً.")
+            return
+        
+        invited_by = 0
+        if context.args and len(context.args) > 0:
+            try:
+                invited_by = int(context.args[0])
+            except:
+                invited_by = 0
+        
+        invite_code = db.add_user(
+            user.id,
+            user.username,
+            user.first_name or "",
+            user.last_name or "",
+            invited_by
+        )
+        
+        db.update_user_activity(user.id)
+        
+        user_data = db.get_user(user.id)
+        if user_data and user_data['is_banned']:
+            await update.message.reply_text("🚫 حسابك محظور. يرجى التواصل مع الدعم الفني.")
+            return
+        
+        welcome_msg = db.get_setting('welcome_message') or "مرحباً بك في بوت 'يلا نتعلم'! 🎓"
+        support_text = db.get_setting('support_text') or f"للتواصل والدعم الفني: {SUPPORT_USERNAME}"
+        channel_text = db.get_setting('channel_text') or f"قناة البوت: {CHANNEL_USERNAME}"
+        
+        message = f"""
+        {welcome_msg}
+        
+        👤 أهلاً {user.first_name or 'عزيزي'}!
+        🎁 رصيدك الحالي: {format_currency(user_data['balance'])}
+        
+        {support_text}
+        {channel_text}
+        
+        🔗 رابط الدعوة الخاص بك:
+        {generate_invite_link(user.id)}
+        
+        🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
+        
+        اختر الخدمة التي تريدها:
+        """
+        
+        await update.message.reply_text(
+            message,
+            reply_markup=get_main_menu_keyboard(user.id),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except Exception as e:
+        logger.error(f"Error in start_command: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+
+async def handle_callback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج زر الرئيسية"""
+    query = update.callback_query
+    await query.answer()
     
-    if db.get_maintenance_mode() and not is_admin(user.id):
-        await update.message.reply_text("⚙️ البوت في وضع الصيانة حالياً. يرجى المحاولة لاحقاً.")
-        return
-    
-    invited_by = 0
-    if context.args and len(context.args) > 0:
-        try:
-            invited_by = int(context.args[0])
-        except:
-            invited_by = 0
-    
-    invite_code = db.add_user(
-        user.id,
-        user.username,
-        user.first_name or "",
-        user.last_name or "",
-        invited_by
-    )
-    
-    db.update_user_activity(user.id)
-    
-    user_data = db.get_user(user.id)
-    if user_data and user_data['is_banned']:
-        await update.message.reply_text("🚫 حسابك محظور. يرجى التواصل مع الدعم الفني.")
-        return
-    
-    welcome_msg = db.get_setting('welcome_message') or "مرحباً بك في بوت 'يلا نتعلم'! 🎓"
-    support_text = db.get_setting('support_text') or f"للتواصل والدعم الفني: {SUPPORT_USERNAME}"
-    channel_text = db.get_setting('channel_text') or f"قناة البوت: {CHANNEL_USERNAME}"
-    
-    message = f"""
-    {welcome_msg}
-    
-    👤 أهلاً {user.first_name or 'عزيزي'}!
-    🎁 رصيدك الحالي: {format_currency(user_data['balance'])}
-    
-    {support_text}
-    {channel_text}
-    
-    🔗 رابط الدعوة الخاص بك:
-    {generate_invite_link(user.id)}
-    
-    🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
-    
-    اختر الخدمة التي تريدها:
-    """
-    
-    await update.message.reply_text(
-        message,
-        reply_markup=get_main_menu_keyboard(user.id),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        user = query.from_user
+        
+        if db.get_maintenance_mode() and not is_admin(user.id):
+            await query.edit_message_text("⚙️ البوت في وضع الصيانة حالياً. يرجى المحاولة لاحقاً.")
+            return
+        
+        db.update_user_activity(user.id)
+        
+        user_data = db.get_user(user.id)
+        if user_data and user_data['is_banned']:
+            await query.edit_message_text("🚫 حسابك محظور. يرجى التواصل مع الدعم الفني.")
+            return
+        
+        welcome_msg = db.get_setting('welcome_message') or "مرحباً بك في بوت 'يلا نتعلم'! 🎓"
+        support_text = db.get_setting('support_text') or f"للتواصل والدعم الفني: {SUPPORT_USERNAME}"
+        channel_text = db.get_setting('channel_text') or f"قناة البوت: {CHANNEL_USERNAME}"
+        
+        message = f"""
+        {welcome_msg}
+        
+        👤 أهلاً {user.first_name or 'عزيزي'}!
+        🎁 رصيدك الحالي: {format_currency(user_data['balance'])}
+        
+        {support_text}
+        {channel_text}
+        
+        🔗 رابط الدعوة الخاص بك:
+        {generate_invite_link(user.id)}
+        
+        🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
+        
+        اختر الخدمة التي تريدها:
+        """
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=get_main_menu_keyboard(user.id),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except Exception as e:
+        logger.error(f"Error in handle_callback_start: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج أمر /help"""
-    help_text = f"""
-    📚 *دليل استخدام بوت "يلا نتعلم"*
-    
-    *الخدمات التعليمية:*
-    
-    🎓 *حساب درجة الإعفاء*
-    - احسب معدلك ومعرفة إذا كنت معفياً
-    
-    📚 *تلخيص الملازم*
-    - أرسل ملف PDF وسألخصه لك باستخدام الذكاء الاصطناعي
-    
-    ❓ *سؤال وجواب بالذكاء الاصطناعي*
-    - اسأل أي سؤال في أي مادة
-    
-    👨‍🎓 *ساعدوني طالب*
-    - ادفع لطرح سوال ويتم الرد عليه من قبل الطلاب
-    
-    📖 *ملازمي ومرشحاتي*
-    - مجموعة من الملازم والمرشحات المجانية
-    
-    🎬 *محاضرات VIP*
-    - محاضرات مدفوعة من مدرسين متميزين
-    
-    👨‍🏫 *اشتراك VIP*
-    - اشترك كـ VIP لرفع محاضراتك وكسب الأرباح
-    
-    *معلومات الدفع:*
-    💰 العملة: الدينار العراقي
-    💵 أقل سعر: 1000 دينار
-    🏦 للشحن: راسل {SUPPORT_USERNAME}
-    
-    *روابط مهمة:*
-    📞 الدعم الفني: {SUPPORT_USERNAME}
-    📢 قناة البوت: {CHANNEL_USERNAME}
-    """
-    
-    await update.message.reply_text(
-        help_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu_keyboard(update.effective_user.id)
-    )
+    try:
+        help_text = f"""
+        📚 *دليل استخدام بوت "يلا نتعلم"*
+        
+        *الخدمات التعليمية:*
+        
+        🎓 *حساب درجة الإعفاء*
+        - احسب معدلك ومعرفة إذا كنت معفياً
+        
+        📚 *تلخيص الملازم*
+        - أرسل ملف PDF وسألخصه لك باستخدام الذكاء الاصطناعي
+        
+        ❓ *سؤال وجواب بالذكاء الاصطناعي*
+        - اسأل أي سؤال في أي مادة
+        
+        👨‍🎓 *ساعدوني طالب*
+        - ادفع لطرح سوال ويتم الرد عليه من قبل الطلاب
+        
+        📖 *ملازمي ومرشحاتي*
+        - مجموعة من الملازم والمرشحات المجانية
+        
+        🎬 *محاضرات VIP*
+        - محاضرات مدفوعة من مدرسين متميزين
+        
+        👨‍🏫 *اشتراك VIP*
+        - اشترك كـ VIP لرفع محاضراتك وكسب الأرباح
+        
+        *معلومات الدفع:*
+        💰 العملة: الدينار العراقي
+        💵 أقل سعر: 1000 دينار
+        🏦 للشحن: راسل {SUPPORT_USERNAME}
+        
+        *روابط مهمة:*
+        📞 الدعم الفني: {SUPPORT_USERNAME}
+        📢 قناة البوت: {CHANNEL_USERNAME}
+        """
+        
+        await update.message.reply_text(
+            help_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu_keyboard(update.effective_user.id)
+        )
+    except Exception as e:
+        logger.error(f"Error in help_command: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض رصيد المستخدم"""
-    user_id = update.effective_user.id
-    user_data = db.get_user(user_id)
-    
-    if not user_data:
-        await update.message.reply_text("❌ حسابك غير مسجل. استخدم /start للتسجيل.")
-        return
-    
-    balance_msg = f"""
-    💰 *رصيدك الحالي*
-    
-    🏦 الرصيد: {format_currency(user_data['balance'])}
-    
-    🔗 رابط الدعوة الخاص بك:
-    `{generate_invite_link(user_id)}`
-    
-    🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
-    
-    📞 للشحن: {SUPPORT_USERNAME}
-    """
-    
-    await update.message.reply_text(
-        balance_msg,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu_keyboard(user_id)
-    )
+    try:
+        user_id = update.effective_user.id
+        user_data = db.get_user(user_id)
+        
+        if not user_data:
+            await update.message.reply_text("❌ حسابك غير مسجل. استخدم /start للتسجيل.")
+            return
+        
+        balance_msg = f"""
+        💰 *رصيدك الحالي*
+        
+        🏦 الرصيد: {format_currency(user_data['balance'])}
+        
+        🔗 رابط الدعوة الخاص بك:
+        `{generate_invite_link(user_id)}`
+        
+        🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
+        
+        📞 للشحن: {SUPPORT_USERNAME}
+        """
+        
+        await update.message.reply_text(
+            balance_msg,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu_keyboard(user_id)
+        )
+    except Exception as e:
+        logger.error(f"Error in balance_command: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 # ====================== معالجات الخدمات ======================
 async def service_exemption(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1562,49 +1637,54 @@ async def service_exemption(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    if not db.is_service_active('exemption_calc'):
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
+        
+        if not db.is_service_active('exemption_calc'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        service_price = db.get_service_price('exemption_calc')
+        if user_data['balance'] < service_price:
+            await query.edit_message_text(
+                f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        instructions = f"""
+        🎓 *حساب درجة الإعفاء*
+        
+        سأطلب منك إدخال 3 درجات (كل درجة على حدة):
+        
+        1. درجة الكورس الأول
+        2. درجة الكورس الثاني  
+        3. درجة الكورس الأخير
+        
+        *المعدل المطلوب للإعفاء:* 90 فأعلى
+        
+        ⚠️ *ملاحظة:* سيتم خصم {format_currency(service_price)} عند اكتمال العملية
+        
+        *أرسل الآن درجة الكورس الأول (رقم فقط):*
+        """
+        
+        context.user_data['exemption_service'] = True
+        context.user_data['exemption_price'] = service_price
+        
         await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            instructions,
+            parse_mode=ParseMode.MARKDOWN
         )
-        return
-    
-    service_price = db.get_service_price('exemption_calc')
-    if user_data['balance'] < service_price:
-        await query.edit_message_text(
-            f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    instructions = f"""
-    🎓 *حساب درجة الإعفاء*
-    
-    سأطلب منك إدخال 3 درجات (كل درجة على حدة):
-    
-    1. درجة الكورس الأول
-    2. درجة الكورس الثاني  
-    3. درجة الكورس الأخير
-    
-    *المعدل المطلوب للإعفاء:* 90 فأعلى
-    
-    ⚠️ *ملاحظة:* سيتم خصم {format_currency(service_price)} عند اكتمال العملية
-    
-    *أرسل الآن درجة الكورس الأول (رقم فقط):*
-    """
-    
-    context.user_data['exemption_service'] = True
-    context.user_data['exemption_price'] = service_price
-    
-    await query.edit_message_text(
-        instructions,
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return CALC_GRADE1
+        
+        return CALC_GRADE1
+    except Exception as e:
+        logger.error(f"Error in service_exemption: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_grade1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة الدرجة الأولى"""
@@ -1620,6 +1700,10 @@ async def process_grade1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ الرجاء إدخال رقم صحيح. أعد إرسال الدرجة:")
         return CALC_GRADE1
+    except Exception as e:
+        logger.error(f"Error in process_grade1: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_grade2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة الدرجة الثانية"""
@@ -1635,6 +1719,10 @@ async def process_grade2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ الرجاء إدخال رقم صحيح. أعد إرسال الدرجة:")
         return CALC_GRADE2
+    except Exception as e:
+        logger.error(f"Error in process_grade2: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_grade3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة الدرجة الثالثة وحساب النتيجة"""
@@ -1708,77 +1796,86 @@ async def process_grade3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ الرجاء إدخال رقم صحيح. أعد إرسال الدرجة:")
         return CALC_GRADE3
+    except Exception as e:
+        logger.error(f"Error in process_grade3: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def service_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """خدمة تلخيص الملازم"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    if not db.is_service_active('pdf_summary'):
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
+        
+        if not db.is_service_active('pdf_summary'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        if not PDF_SUPPORT:
+            await query.edit_message_text(
+                "❌ هذه الخدمة غير متاحة حالياً.\n\nالمكتبات المطلوبة غير مثبتة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        service_price = db.get_service_price('pdf_summary')
+        if user_data['balance'] < service_price:
+            await query.edit_message_text(
+                f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        instructions = f"""
+        📚 *تلخيص الملازم*
+        
+        أرسل لي ملف PDF وسأقوم بتلخيصه لك باستخدام الذكاء الاصطناعي.
+        
+        ⚠️ *ملاحظات مهمة:*
+        1. الملف يجب أن يكون بصيغة PDF
+        2. الحد الأقصى للحجم: 20MB
+        3. سأحذف المعلومات غير المهمة وأرتب النص
+        4. سأعيده لك كملف PDF منظم
+        
+        💰 *سعر الخدمة:* {format_currency(service_price)}
+        
+        *أرسل ملف PDF الآن:*
+        """
+        
+        context.user_data['summary_service'] = True
+        context.user_data['summary_price'] = service_price
+        
         await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            instructions,
+            parse_mode=ParseMode.MARKDOWN
         )
-        return
-    
-    if not PDF_SUPPORT:
-        await query.edit_message_text(
-            "❌ هذه الخدمة غير متاحة حالياً.\n\nالمكتبات المطلوبة غير مثبتة.",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    service_price = db.get_service_price('pdf_summary')
-    if user_data['balance'] < service_price:
-        await query.edit_message_text(
-            f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    instructions = f"""
-    📚 *تلخيص الملازم*
-    
-    أرسل لي ملف PDF وسأقوم بتلخيصه لك باستخدام الذكاء الاصطناعي.
-    
-    ⚠️ *ملاحظات مهمة:*
-    1. الملف يجب أن يكون بصيغة PDF
-    2. الحد الأقصى للحجم: 20MB
-    3. سأحذف المعلومات غير المهمة وأرتب النص
-    4. سأعيده لك كملف PDF منظم
-    
-    💰 *سعر الخدمة:* {format_currency(service_price)}
-    
-    *أرسل ملف PDF الآن:*
-    """
-    
-    context.user_data['summary_service'] = True
-    context.user_data['summary_price'] = service_price
-    
-    await query.edit_message_text(
-        instructions,
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return PDF_SUMMARY
+        
+        return PDF_SUMMARY
+    except Exception as e:
+        logger.error(f"Error in service_summary: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_pdf_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة ملف PDF للتلخيص"""
-    user_id = update.effective_user.id
-    
-    if not update.message.document:
-        await update.message.reply_text("❌ يرجى إرسال ملف PDF فقط. حاول مرة أخرى:")
-        return PDF_SUMMARY
-    
-    file_name = update.message.document.file_name or ""
-    if not file_name.lower().endswith('.pdf'):
-        await update.message.reply_text("❌ الملف يجب أن يكون بصيغة PDF. حاول مرة أخرى:")
-        return PDF_SUMMARY
-    
     try:
+        user_id = update.effective_user.id
+        
+        if not update.message.document:
+            await update.message.reply_text("❌ يرجى إرسال ملف PDF فقط. حاول مرة أخرى:")
+            return PDF_SUMMARY
+        
+        file_name = update.message.document.file_name or ""
+        if not file_name.lower().endswith('.pdf'):
+            await update.message.reply_text("❌ الملف يجب أن يكون بصيغة PDF. حاول مرة أخرى:")
+            return PDF_SUMMARY
+        
         await update.message.reply_text("⏳ جارٍ تحميل الملف...")
         file = await update.message.document.get_file()
         file_bytes = await file.download_as_bytearray()
@@ -1847,405 +1944,445 @@ async def service_qna(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    if not db.is_service_active('qna'):
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
+        
+        if not db.is_service_active('qna'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        service_price = db.get_service_price('qna')
+        if user_data['balance'] < service_price:
+            await query.edit_message_text(
+                f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        instructions = f"""
+        ❓ *سؤال وجواب بالذكاء الاصطناعي*
+        
+        اسألني أي سؤال في أي مادة وسأجيبك باستخدام الذكاء الاصطناعي المتخصص في المناهج العراقية.
+        
+        *يمكنك إرسال:*
+        1. سؤال نصي
+        2. صورة تحتوي على سؤال
+        3. أي استفسار دراسي
+        
+        ⚠️ *ملاحظة:* سيتم خصم {format_currency(service_price)} عند إرسال السؤال
+        
+        *أرسل سؤالك الآن:*
+        """
+        
+        context.user_data['qna_service'] = True
+        context.user_data['qna_price'] = service_price
+        
         await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            instructions,
+            parse_mode=ParseMode.MARKDOWN
         )
-        return
-    
-    service_price = db.get_service_price('qna')
-    if user_data['balance'] < service_price:
-        await query.edit_message_text(
-            f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    instructions = f"""
-    ❓ *سؤال وجواب بالذكاء الاصطناعي*
-    
-    اسألني أي سؤال في أي مادة وسأجيبك باستخدام الذكاء الاصطناعي المتخصص في المناهج العراقية.
-    
-    *يمكنك إرسال:*
-    1. سؤال نصي
-    2. صورة تحتوي على سؤال
-    3. أي استفسار دراسي
-    
-    ⚠️ *ملاحظة:* سيتم خصم {format_currency(service_price)} عند إرسال السؤال
-    
-    *أرسل سؤالك الآن:*
-    """
-    
-    context.user_data['qna_service'] = True
-    context.user_data['qna_price'] = service_price
-    
-    await query.edit_message_text(
-        instructions,
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ASK_QUESTION
+        
+        return ASK_QUESTION
+    except Exception as e:
+        logger.error(f"Error in service_qna: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة السؤال"""
-    user_id = update.effective_user.id
-    service_price = context.user_data.get('qna_price', db.get_service_price('qna'))
-    
-    if not db.deduct_balance(user_id, service_price):
-        await update.message.reply_text("❌ رصيدك غير كافي. يرجى الشحن وحاول مرة أخرى.")
-        return ConversationHandler.END
-    
-    db.add_transaction(user_id, -service_price, 'payment', 'qna', 'سؤال وجواب بالذكاء الاصطناعي')
-    
-    question_text = ""
-    if update.message.text:
-        question_text = update.message.text
-    elif update.message.caption:
-        question_text = update.message.caption
-    else:
-        question_text = "سؤال بدون نص"
-    
-    await update.message.reply_text("🤔 جارٍ تحليل سؤالك والبحث عن إجابة مناسبة...")
-    
     try:
-        answer = await answer_question_with_gemini(question_text)
+        user_id = update.effective_user.id
+        service_price = context.user_data.get('qna_price', db.get_service_price('qna'))
         
-        response_msg = f"""
-        ✅ *تمت الإجابة على سؤالك*
+        if not db.deduct_balance(user_id, service_price):
+            await update.message.reply_text("❌ رصيدك غير كافي. يرجى الشحن وحاول مرة أخرى.")
+            return ConversationHandler.END
         
-        ❓ *سؤالك:* {question_text[:200]}...
+        db.add_transaction(user_id, -service_price, 'payment', 'qna', 'سؤال وجواب بالذكاء الاصطناعي')
         
-        💡 *الإجابة:*
-        {answer}
-        
-        💰 *تم خصم:* {format_currency(service_price)}
-        🏦 *رصيدك المتبقي:* {format_currency(db.get_user_balance(user_id))}
-        
-        📌 *ملاحظة:* الإجابة مبنية على الذكاء الاصطناعي المتخصص في المناهج التعليمية.
-        """
-        
-        if len(response_msg) > 4096:
-            parts = textwrap.wrap(response_msg, width=4000)
-            for i, part in enumerate(parts):
-                if i == 0:
-                    await update.message.reply_text(part, parse_mode=ParseMode.MARKDOWN)
-                else:
-                    await update.message.reply_text(part)
+        question_text = ""
+        if update.message.text:
+            question_text = update.message.text
+        elif update.message.caption:
+            question_text = update.message.caption
         else:
-            await update.message.reply_text(response_msg, parse_mode=ParseMode.MARKDOWN)
+            question_text = "سؤال بدون نص"
         
-        if is_admin(ADMIN_ID) and db.get_setting('admin_notifications') == '1':
-            await send_admin_notification(context, f"""
-            ❓ *عملية سؤال وجواب جديدة*
+        await update.message.reply_text("🤔 جارٍ تحليل سؤالك والبحث عن إجابة مناسبة...")
+        
+        try:
+            answer = await answer_question_with_gemini(question_text)
             
-            👤 المستخدم: {update.effective_user.first_name} (ID: {user_id})
-            📝 السؤال: {question_text[:100]}...
-            💰 السعر: {format_currency(service_price)}
-            """)
+            response_msg = f"""
+            ✅ *تمت الإجابة على سؤالك*
+            
+            ❓ *سؤالك:* {question_text[:200]}...
+            
+            💡 *الإجابة:*
+            {answer}
+            
+            💰 *تم خصم:* {format_currency(service_price)}
+            🏦 *رصيدك المتبقي:* {format_currency(db.get_user_balance(user_id))}
+            
+            📌 *ملاحظة:* الإجابة مبنية على الذكاء الاصطناعي المتخصص في المناهج التعليمية.
+            """
+            
+            if len(response_msg) > 4096:
+                parts = textwrap.wrap(response_msg, width=4000)
+                for i, part in enumerate(parts):
+                    if i == 0:
+                        await update.message.reply_text(part, parse_mode=ParseMode.MARKDOWN)
+                    else:
+                        await update.message.reply_text(part)
+            else:
+                await update.message.reply_text(response_msg, parse_mode=ParseMode.MARKDOWN)
+            
+            if is_admin(ADMIN_ID) and db.get_setting('admin_notifications') == '1':
+                await send_admin_notification(context, f"""
+                ❓ *عملية سؤال وجواب جديدة*
+                
+                👤 المستخدم: {update.effective_user.first_name} (ID: {user_id})
+                📝 السؤال: {question_text[:100]}...
+                💰 السعر: {format_currency(service_price)}
+                """)
+            
+        except Exception as e:
+            logger.error(f"QnA error: {e}")
+            await update.message.reply_text("❌ حدث خطأ أثناء معالجة سؤالك. يرجى المحاولة مرة أخرى.")
+            db.add_balance(user_id, service_price)
+            db.add_transaction(user_id, service_price, 'refund', 'qna', 'استرجاع رصيد بسبب خطأ')
         
+        context.user_data.pop('qna_service', None)
+        context.user_data.pop('qna_price', None)
+        
+        return ConversationHandler.END
     except Exception as e:
-        logger.error(f"QnA error: {e}")
-        await update.message.reply_text("❌ حدث خطأ أثناء معالجة سؤالك. يرجى المحاولة مرة أخرى.")
-        db.add_balance(user_id, service_price)
-        db.add_transaction(user_id, service_price, 'refund', 'qna', 'استرجاع رصيد بسبب خطأ')
-    
-    context.user_data.pop('qna_service', None)
-    context.user_data.pop('qna_price', None)
-    
-    return ConversationHandler.END
+        logger.error(f"Error in process_question: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def service_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """خدمة ساعدوني طالب"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    if not db.is_service_active('help_student'):
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
+        
+        if not db.is_service_active('help_student'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        service_price = db.get_service_price('help_student')
+        if user_data['balance'] < service_price:
+            await query.edit_message_text(
+                f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        instructions = f"""
+        👨‍🎓 *ساعدوني طالب*
+        
+        ادفع لطرح سؤال وسيتم نشره في قسم الأسئلة للإجابة عليه من قبل الطلاب الآخرين.
+        
+        *خطوات العملية:*
+        1. تدفع سعر الخدمة
+        2. ترسل سؤالك (نص أو صورة)
+        3. أنا أوافق على السؤال
+        4. ينشر في قسم الأسئلة
+        5. الطلاب الآخرين يجيبون
+        6. تحصل على الإجابة
+        
+        ⚠️ *ملاحظة:* سيتم خصم {format_currency(service_price)} عند إرسال السؤال
+        
+        *أرسل سؤالك الآن (نص أو صورة):*
+        """
+        
+        context.user_data['help_service'] = True
+        context.user_data['help_price'] = service_price
+        
         await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            instructions,
+            parse_mode=ParseMode.MARKDOWN
         )
-        return
-    
-    service_price = db.get_service_price('help_student')
-    if user_data['balance'] < service_price:
-        await query.edit_message_text(
-            f"❌ رصيدك غير كافي.\n\n💰 سعر الخدمة: {format_currency(service_price)}\n🏦 رصيدك: {format_currency(user_data['balance'])}\n\nللشحن راسل: {SUPPORT_USERNAME}",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    instructions = f"""
-    👨‍🎓 *ساعدوني طالب*
-    
-    ادفع لطرح سؤال وسيتم نشره في قسم الأسئلة للإجابة عليه من قبل الطلاب الآخرين.
-    
-    *خطوات العملية:*
-    1. تدفع سعر الخدمة
-    2. ترسل سؤالك (نص أو صورة)
-    3. أنا أوافق على السؤال
-    4. ينشر في قسم الأسئلة
-    5. الطلاب الآخرين يجيبون
-    6. تحصل على الإجابة
-    
-    ⚠️ *ملاحظة:* سيتم خصم {format_currency(service_price)} عند إرسال السؤال
-    
-    *أرسل سؤالك الآن (نص أو صورة):*
-    """
-    
-    context.user_data['help_service'] = True
-    context.user_data['help_price'] = service_price
-    
-    await query.edit_message_text(
-        instructions,
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ASK_QUESTION
+        
+        return ASK_QUESTION
+    except Exception as e:
+        logger.error(f"Error in service_help: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_help_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة سؤال ساعدوني طالب"""
-    user_id = update.effective_user.id
-    service_price = context.user_data.get('help_price', db.get_service_price('help_student'))
-    
-    if not db.deduct_balance(user_id, service_price):
-        await update.message.reply_text("❌ رصيدك غير كافي. يرجى الشحن وحاول مرة أخرى.")
-        return ConversationHandler.END
-    
-    db.add_transaction(user_id, -service_price, 'payment', 'help_student', 'سؤال ساعدوني طالب')
-    
-    question_text = ""
-    question_image = None
-    
-    if update.message.text:
-        question_text = update.message.text
-    elif update.message.caption:
-        question_text = update.message.caption
-    
-    if update.message.photo:
-        question_image = update.message.photo[-1].file_id
-    elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('image/'):
-        question_image = update.message.document.file_id
-    
-    question_id = db.add_student_question(user_id, question_text, question_image, service_price)
-    
-    await update.message.reply_text(f"""
-    ✅ *تم استلام سؤالك بنجاح*
-    
-    📝 *رقم سؤالك:* #{question_id}
-    💰 *تم خصم:* {format_currency(service_price)}
-    🏦 *رصيدك المتبقي:* {format_currency(db.get_user_balance(user_id))}
-    
-    ⏳ *جاري مراجعة السؤال من قبل الإدارة...*
-    📌 ستتم إشعارتك عند الموافقة والنشر.
-    """, parse_mode=ParseMode.MARKDOWN)
-    
-    if is_admin(ADMIN_ID):
-        try:
-            approve_keyboard = [
-                [
-                    InlineKeyboardButton("✅ الموافقة", callback_data=f"admin_approve_question_{question_id}"),
-                    InlineKeyboardButton("❌ الرفض", callback_data=f"admin_reject_question_{question_id}")
+    try:
+        user_id = update.effective_user.id
+        service_price = context.user_data.get('help_price', db.get_service_price('help_student'))
+        
+        if not db.deduct_balance(user_id, service_price):
+            await update.message.reply_text("❌ رصيدك غير كافي. يرجى الشحن وحاول مرة أخرى.")
+            return ConversationHandler.END
+        
+        db.add_transaction(user_id, -service_price, 'payment', 'help_student', 'سؤال ساعدوني طالب')
+        
+        question_text = ""
+        question_image = None
+        
+        if update.message.text:
+            question_text = update.message.text
+        elif update.message.caption:
+            question_text = update.message.caption
+        
+        if update.message.photo:
+            question_image = update.message.photo[-1].file_id
+        elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('image/'):
+            question_image = update.message.document.file_id
+        
+        question_id = db.add_student_question(user_id, question_text, question_image, service_price)
+        
+        await update.message.reply_text(f"""
+        ✅ *تم استلام سؤالك بنجاح*
+        
+        📝 *رقم سؤالك:* #{question_id}
+        💰 *تم خصم:* {format_currency(service_price)}
+        🏦 *رصيدك المتبقي:* {format_currency(db.get_user_balance(user_id))}
+        
+        ⏳ *جاري مراجعة السؤال من قبل الإدارة...*
+        📌 ستتم إشعارتك عند الموافقة والنشر.
+        """, parse_mode=ParseMode.MARKDOWN)
+        
+        if is_admin(ADMIN_ID):
+            try:
+                approve_keyboard = [
+                    [
+                        InlineKeyboardButton("✅ الموافقة", callback_data=f"admin_approve_question_{question_id}"),
+                        InlineKeyboardButton("❌ الرفض", callback_data=f"admin_reject_question_{question_id}")
+                    ]
                 ]
-            ]
-            
-            admin_msg = f"""
-            ❓ *سؤال جديد يحتاج موافقة*
-            
-            👤 المستخدم: {update.effective_user.first_name} (ID: {user_id})
-            📝 السؤال: {question_text[:200]}...
-            💰 السعر المدفوع: {format_currency(service_price)}
-            
-            #سؤال_{question_id}
-            """
-            
-            if question_image:
-                await context.bot.send_photo(
-                    ADMIN_ID,
-                    photo=question_image,
-                    caption=admin_msg,
-                    reply_markup=InlineKeyboardMarkup(approve_keyboard),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-            else:
-                await context.bot.send_message(
-                    ADMIN_ID,
-                    admin_msg,
-                    reply_markup=InlineKeyboardMarkup(approve_keyboard),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-        except Exception as e:
-            logger.error(f"Error sending admin notification: {e}")
-    
-    context.user_data.pop('help_service', None)
-    context.user_data.pop('help_price', None)
-    
-    return ConversationHandler.END
+                
+                admin_msg = f"""
+                ❓ *سؤال جديد يحتاج موافقة*
+                
+                👤 المستخدم: {update.effective_user.first_name} (ID: {user_id})
+                📝 السؤال: {question_text[:200]}...
+                💰 السعر المدفوع: {format_currency(service_price)}
+                
+                #سؤال_{question_id}
+                """
+                
+                if question_image:
+                    await context.bot.send_photo(
+                        ADMIN_ID,
+                        photo=question_image,
+                        caption=admin_msg,
+                        reply_markup=InlineKeyboardMarkup(approve_keyboard),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                else:
+                    await context.bot.send_message(
+                        ADMIN_ID,
+                        admin_msg,
+                        reply_markup=InlineKeyboardMarkup(approve_keyboard),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+            except Exception as e:
+                logger.error(f"Error sending admin notification: {e}")
+        
+        context.user_data.pop('help_service', None)
+        context.user_data.pop('help_price', None)
+        
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in process_help_question: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def service_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض الملازم والمرشحات"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not db.is_service_active('study_materials'):
+    try:
+        user_id = query.from_user.id
+        
+        if not db.is_service_active('study_materials'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        materials = db.get_study_materials()
+        
+        if not materials:
+            await query.edit_message_text(
+                "📭 لا توجد مواد متاحة حالياً.\n\nسيتم إضافة مواد جديدة قريباً.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        stages = {}
+        for material in materials:
+            stage = material['stage'] or 'غير مصنف'
+            if stage not in stages:
+                stages[stage] = []
+            stages[stage].append(material)
+        
+        keyboard = []
+        for stage in sorted(stages.keys()):
+            keyboard.append([InlineKeyboardButton(f"📚 {stage} ({len(stages[stage])})", 
+                           callback_data=f"materials_stage_{stage}")])
+        
+        keyboard.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="start")])
+        
         await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            "📖 *ملازمي ومرشحاتي*\n\nاختر المرحلة التعليمية:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-    
-    materials = db.get_study_materials()
-    
-    if not materials:
-        await query.edit_message_text(
-            "📭 لا توجد مواد متاحة حالياً.\n\nسيتم إضافة مواد جديدة قريباً.",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    stages = {}
-    for material in materials:
-        stage = material['stage'] or 'غير مصنف'
-        if stage not in stages:
-            stages[stage] = []
-        stages[stage].append(material)
-    
-    keyboard = []
-    for stage in sorted(stages.keys()):
-        keyboard.append([InlineKeyboardButton(f"📚 {stage} ({len(stages[stage])})", 
-                       callback_data=f"materials_stage_{stage}")])
-    
-    keyboard.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="start")])
-    
-    await query.edit_message_text(
-        "📖 *ملازمي ومرشحاتي*\n\nاختر المرحلة التعليمية:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        logger.error(f"Error in service_materials: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def show_stage_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض مواد مرحلة محددة"""
     query = update.callback_query
     await query.answer()
     
-    data = query.data.replace("materials_stage_", "")
-    stage = data
-    
-    materials = db.get_study_materials(stage=stage)
-    
-    if not materials:
-        await query.edit_message_text(
-            f"📭 لا توجد مواد متاحة لمرحلة {stage}.",
-            reply_markup=get_main_menu_keyboard(query.from_user.id)
-        )
-        return
-    
-    context.user_data['material_index'] = 0
-    context.user_data['current_stage'] = stage
-    context.user_data['current_materials'] = materials
-    
-    await show_material_page(update, context)
+    try:
+        data = query.data.replace("materials_stage_", "")
+        stage = data
+        
+        materials = db.get_study_materials(stage=stage)
+        
+        if not materials:
+            await query.edit_message_text(
+                f"📭 لا توجد مواد متاحة لمرحلة {stage}.",
+                reply_markup=get_main_menu_keyboard(query.from_user.id)
+            )
+            return
+        
+        context.user_data['material_index'] = 0
+        context.user_data['current_stage'] = stage
+        context.user_data['current_materials'] = materials
+        
+        await show_material_page(update, context)
+    except Exception as e:
+        logger.error(f"Error in show_stage_materials: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def show_material_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض صفحة المادة الحالية"""
     query = update.callback_query
     await query.answer()
     
-    idx = context.user_data.get('material_index', 0)
-    materials = context.user_data.get('current_materials', [])
-    stage = context.user_data.get('current_stage', '')
-    
-    if not materials or idx >= len(materials):
+    try:
+        idx = context.user_data.get('material_index', 0)
+        materials = context.user_data.get('current_materials', [])
+        stage = context.user_data.get('current_stage', '')
+        
+        if not materials or idx >= len(materials):
+            await query.edit_message_text(
+                "❌ لا توجد مواد لعرضها.",
+                reply_markup=get_main_menu_keyboard(query.from_user.id)
+            )
+            return
+        
+        material = materials[idx]
+        
+        keyboard = []
+        
+        nav_buttons = []
+        if idx > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="material_prev"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(materials)}", callback_data="noop"))
+        
+        if idx < len(materials) - 1:
+            nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="material_next"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([InlineKeyboardButton("📥 تحميل الملف", callback_data=f"download_material_{material['material_id']}")])
+        
+        keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="service_materials")])
+        
+        material_text = f"""
+        📖 *{material['title']}*
+        
+        📝 *الوصف:*
+        {material['description']}
+        
+        🎓 *المرحلة:* {stage}
+        📅 *تاريخ الإضافة:* {format_date(material['added_at'])}
+        """
+        
         await query.edit_message_text(
-            "❌ لا توجد مواد لعرضها.",
-            reply_markup=get_main_menu_keyboard(query.from_user.id)
+            material_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-    
-    material = materials[idx]
-    
-    keyboard = []
-    
-    nav_buttons = []
-    if idx > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="material_prev"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(materials)}", callback_data="noop"))
-    
-    if idx < len(materials) - 1:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="material_next"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([InlineKeyboardButton("📥 تحميل الملف", callback_data=f"download_material_{material['material_id']}")])
-    
-    keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="service_materials")])
-    
-    material_text = f"""
-    📖 *{material['title']}*
-    
-    📝 *الوصف:*
-    {material['description']}
-    
-    🎓 *المرحلة:* {stage}
-    📅 *تاريخ الإضافة:* {format_date(material['added_at'])}
-    """
-    
-    await query.edit_message_text(
-        material_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        logger.error(f"Error in show_material_page: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def navigate_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التنقل بين المواد"""
     query = update.callback_query
     await query.answer()
     
-    if query.data == "material_prev":
-        context.user_data['material_index'] -= 1
-    elif query.data == "material_next":
-        context.user_data['material_index'] += 1
-    
-    await show_material_page(update, context)
+    try:
+        if query.data == "material_prev":
+            context.user_data['material_index'] -= 1
+        elif query.data == "material_next":
+            context.user_data['material_index'] += 1
+        
+        await show_material_page(update, context)
+    except Exception as e:
+        logger.error(f"Error in navigate_materials: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def download_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تحميل مادة"""
     query = update.callback_query
     await query.answer()
     
-    material_id = int(query.data.replace("download_material_", ""))
-    materials = context.user_data.get('current_materials', [])
-    
-    material = next((m for m in materials if m['material_id'] == material_id), None)
-    
-    if not material:
-        await query.edit_message_text("❌ الملف غير متوفر.")
-        return
-    
     try:
-        await context.bot.send_document(
-            chat_id=query.from_user.id,
-            document=material['file_id'],
-            caption=f"📥 {material['title']}\n📝 {material['description']}"
-        )
+        material_id = int(query.data.replace("download_material_", ""))
+        materials = context.user_data.get('current_materials', [])
         
-        await query.edit_message_text(
-            f"✅ *تم إرسال الملف بنجاح*\n\n{material['title']}",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        material = next((m for m in materials if m['material_id'] == material_id), None)
+        
+        if not material:
+            await query.edit_message_text("❌ الملف غير متوفر.")
+            return
+        
+        try:
+            await context.bot.send_document(
+                chat_id=query.from_user.id,
+                document=material['file_id'],
+                caption=f"📥 {material['title']}\n📝 {material['description']}"
+            )
+            
+            await query.edit_message_text(
+                f"✅ *تم إرسال الملف بنجاح*\n\n{material['title']}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            logger.error(f"Error sending material: {e}")
+            await query.edit_message_text("❌ حدث خطأ أثناء إرسال الملف.")
     except Exception as e:
-        logger.error(f"Error sending material: {e}")
-        await query.edit_message_text("❌ حدث خطأ أثناء إرسال الملف.")
+        logger.error(f"Error in download_material: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 # ====================== نظام VIP ======================
 async def vip_lectures(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2253,438 +2390,482 @@ async def vip_lectures(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not db.is_service_active('vip_lectures'):
+    try:
+        user_id = query.from_user.id
+        
+        if not db.is_service_active('vip_lectures'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        lectures = db.get_approved_lectures(limit=50)
+        
+        if not lectures:
+            await query.edit_message_text(
+                "🎬 *محاضرات VIP*\n\n📭 لا توجد محاضرات متاحة حالياً.\n\nيمكنك الاشتراك في VIP لرفع محاضراتك الخاصة.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        if 'lecture_index' not in context.user_data:
+            context.user_data['lecture_index'] = 0
+            context.user_data['current_lectures'] = lectures
+        
+        idx = context.user_data['lecture_index']
+        lecture = context.user_data['current_lectures'][idx]
+        
+        keyboard = []
+        
+        nav_buttons = []
+        if idx > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="lecture_prev"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(lectures)}", callback_data="noop"))
+        
+        if idx < len(lectures) - 1:
+            nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="lecture_next"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        if lecture['price'] > 0:
+            price_text = f"💵 {format_currency(lecture['price'])}"
+            keyboard.append([InlineKeyboardButton(f"🛒 شراء المحاضرة ({price_text})", 
+                           callback_data=f"buy_lecture_{lecture['lecture_id']}")])
+        else:
+            keyboard.append([InlineKeyboardButton("📥 تحميل مجاني", 
+                           callback_data=f"download_lecture_{lecture['lecture_id']}")])
+        
+        keyboard.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="start")])
+        
+        avg_rating = 0
+        if lecture['rating_count'] > 0:
+            avg_rating = lecture['rating_total'] / lecture['rating_count']
+        
+        lecture_text = f"""
+        🎬 *{lecture['title']}*
+        
+        👨‍🏫 *المدرس:* {lecture['first_name']} ({lecture['username'] or 'بدون'})
+        
+        📝 *الوصف:*
+        {lecture['description']}
+        
+        💰 *السعر:* {format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'}
+        👁️ *المشاهدات:* {lecture['views']:,}
+        🛒 *المبيعات:* {lecture['purchases']:,}
+        ⭐ *التقييم:* {avg_rating:.1f}/5 ({lecture['rating_count']} تقييم)
+        📅 *تاريخ النشر:* {format_date(lecture['created_at'])}
+        """
+        
         await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    lectures = db.get_approved_lectures(limit=50)
-    
-    if not lectures:
-        await query.edit_message_text(
-            "🎬 *محاضرات VIP*\n\n📭 لا توجد محاضرات متاحة حالياً.\n\nيمكنك الاشتراك في VIP لرفع محاضراتك الخاصة.",
+            lecture_text,
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu_keyboard(user_id)
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-    
-    if 'lecture_index' not in context.user_data:
-        context.user_data['lecture_index'] = 0
-        context.user_data['current_lectures'] = lectures
-    
-    idx = context.user_data['lecture_index']
-    lecture = context.user_data['current_lectures'][idx]
-    
-    keyboard = []
-    
-    nav_buttons = []
-    if idx > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="lecture_prev"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(lectures)}", callback_data="noop"))
-    
-    if idx < len(lectures) - 1:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="lecture_next"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    if lecture['price'] > 0:
-        price_text = f"💵 {format_currency(lecture['price'])}"
-        keyboard.append([InlineKeyboardButton(f"🛒 شراء المحاضرة ({price_text})", 
-                       callback_data=f"buy_lecture_{lecture['lecture_id']}")])
-    else:
-        keyboard.append([InlineKeyboardButton("📥 تحميل مجاني", 
-                       callback_data=f"download_lecture_{lecture['lecture_id']}")])
-    
-    keyboard.append([InlineKeyboardButton("🏠 الرئيسية", callback_data="start")])
-    
-    avg_rating = 0
-    if lecture['rating_count'] > 0:
-        avg_rating = lecture['rating_total'] / lecture['rating_count']
-    
-    lecture_text = f"""
-    🎬 *{lecture['title']}*
-    
-    👨‍🏫 *المدرس:* {lecture['first_name']} ({lecture['username'] or 'بدون'})
-    
-    📝 *الوصف:*
-    {lecture['description']}
-    
-    💰 *السعر:* {format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'}
-    👁️ *المشاهدات:* {lecture['views']:,}
-    🛒 *المبيعات:* {lecture['purchases']:,}
-    ⭐ *التقييم:* {avg_rating:.1f}/5 ({lecture['rating_count']} تقييم)
-    📅 *تاريخ النشر:* {format_date(lecture['created_at'])}
-    """
-    
-    await query.edit_message_text(
-        lecture_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        logger.error(f"Error in vip_lectures: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def navigate_lectures(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التنقل بين المحاضرات"""
     query = update.callback_query
     await query.answer()
     
-    if query.data == "lecture_prev":
-        context.user_data['lecture_index'] -= 1
-    elif query.data == "lecture_next":
-        context.user_data['lecture_index'] += 1
-    
-    await vip_lectures(update, context)
+    try:
+        if query.data == "lecture_prev":
+            context.user_data['lecture_index'] -= 1
+        elif query.data == "lecture_next":
+            context.user_data['lecture_index'] += 1
+        
+        await vip_lectures(update, context)
+    except Exception as e:
+        logger.error(f"Error in navigate_lectures: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def download_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تحميل محاضرة مجانية"""
     query = update.callback_query
     await query.answer()
     
-    lecture_id = int(query.data.replace("download_lecture_", ""))
-    user_id = query.from_user.id
-    
-    lecture = db.get_lecture_by_id(lecture_id)
-    if not lecture:
-        await query.edit_message_text("❌ المحاضرة غير متاحة.")
-        return
-    
     try:
-        await context.bot.send_document(
-            chat_id=user_id,
-            document=lecture['file_id'],
-            caption=f"""
-            🎬 *{lecture['title']}*
-            
-            👨‍🏫 المدرس: {lecture['first_name']}
-            📝 {lecture['description'][:100]}...
-            
-            📥 تم تحميل المحاضرة بنجاح.
-            """
-        )
+        lecture_id = int(query.data.replace("download_lecture_", ""))
+        user_id = query.from_user.id
         
-        db.update_lecture_stats(lecture_id)
+        lecture = db.get_lecture_by_id(lecture_id)
+        if not lecture:
+            await query.edit_message_text("❌ المحاضرة غير متاحة.")
+            return
         
-        await query.edit_message_text(
-            f"✅ *تم تحميل المحاضرة بنجاح*\n\n{lecture['title']}",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
+        try:
+            await context.bot.send_document(
+                chat_id=user_id,
+                document=lecture['file_id'],
+                caption=f"""
+                🎬 *{lecture['title']}*
+                
+                👨‍🏫 المدرس: {lecture['first_name']}
+                📝 {lecture['description'][:100]}...
+                
+                📥 تم تحميل المحاضرة بنجاح.
+                """
+            )
+            
+            db.update_lecture_stats(lecture_id)
+            
+            await query.edit_message_text(
+                f"✅ *تم تحميل المحاضرة بنجاح*\n\n{lecture['title']}",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+        except Exception as e:
+            logger.error(f"Error sending lecture: {e}")
+            await query.edit_message_text("❌ حدث خطأ أثناء إرسال المحاضرة.")
     except Exception as e:
-        logger.error(f"Error sending lecture: {e}")
-        await query.edit_message_text("❌ حدث خطأ أثناء إرسال المحاضرة.")
+        logger.error(f"Error in download_lecture: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def buy_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """شراء محاضرة"""
     query = update.callback_query
     await query.answer()
     
-    lecture_id = int(query.data.replace("buy_lecture_", ""))
-    user_id = query.from_user.id
-    
-    lecture = db.get_lecture_by_id(lecture_id)
-    if not lecture:
-        await query.edit_message_text("❌ المحاضرة غير متاحة.")
-        return
-    
-    user_balance = db.get_user_balance(user_id)
-    if user_balance < lecture['price']:
-        await query.edit_message_text(
-            f"❌ رصيدك غير كافي.\n\n💰 سعر المحاضرة: {format_currency(lecture['price'])}\n🏦 رصيدك: {format_currency(user_balance)}",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    if not db.deduct_balance(user_id, lecture['price']):
-        await query.edit_message_text("❌ فشل في عملية الشراء. يرجى المحاولة لاحقاً.")
-        return
-    
-    if db.add_vip_sale(lecture_id, user_id, lecture['price']):
-        try:
-            await context.bot.send_document(
-                chat_id=user_id,
-                document=lecture['file_id'],
-                caption=f"""
-                ✅ *تم شراء المحاضرة بنجاح*
-                
-                🎬 *{lecture['title']}*
-                👨‍🏫 المدرس: {lecture['first_name']}
-                💰 السعر: {format_currency(lecture['price'])}
-                📅 تاريخ الشراء: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
-                
-                📌 *ملاحظة:* 60% من المبلغ يذهب للمدرس، 40% للإدارة.
-                """
-            )
-            
+    try:
+        lecture_id = int(query.data.replace("buy_lecture_", ""))
+        user_id = query.from_user.id
+        
+        lecture = db.get_lecture_by_id(lecture_id)
+        if not lecture:
+            await query.edit_message_text("❌ المحاضرة غير متاحة.")
+            return
+        
+        user_balance = db.get_user_balance(user_id)
+        if user_balance < lecture['price']:
             await query.edit_message_text(
-                f"""
-                ✅ *تم شراء المحاضرة بنجاح*
-                
-                🎬 {lecture['title']}
-                💰 السعر: {format_currency(lecture['price'])}
-                🏦 رصيدك المتبقي: {format_currency(db.get_user_balance(user_id))}
-                
-                📥 تم إرسال الملف إليك.
-                """,
-                parse_mode=ParseMode.MARKDOWN,
+                f"❌ رصيدك غير كافي.\n\n💰 سعر المحاضرة: {format_currency(lecture['price'])}\n🏦 رصيدك: {format_currency(user_balance)}",
                 reply_markup=get_main_menu_keyboard(user_id)
             )
-            
-            earnings = db.get_vip_earnings(lecture['teacher_id'])
-            if earnings:
-                teacher_msg = f"""
-                💰 *بيع جديد لمحاضرة*
+            return
+        
+        if not db.deduct_balance(user_id, lecture['price']):
+            await query.edit_message_text("❌ فشل في عملية الشراء. يرجى المحاولة لاحقاً.")
+            return
+        
+        if db.add_vip_sale(lecture_id, user_id, lecture['price']):
+            try:
+                await context.bot.send_document(
+                    chat_id=user_id,
+                    document=lecture['file_id'],
+                    caption=f"""
+                    ✅ *تم شراء المحاضرة بنجاح*
+                    
+                    🎬 *{lecture['title']}*
+                    👨‍🏫 المدرس: {lecture['first_name']}
+                    💰 السعر: {format_currency(lecture['price'])}
+                    📅 تاريخ الشراء: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+                    
+                    📌 *ملاحظة:* 60% من المبلغ يذهب للمدرس، 40% للإدارة.
+                    """
+                )
                 
-                🎬 المحاضرة: {lecture['title']}
-                👤 المشتري: {query.from_user.first_name} (ID: {user_id})
-                💰 السعر: {format_currency(lecture['price'])}
-                💵 ربحك: {format_currency(int(lecture['price'] * 0.6))}
-                🏦 إجمالي أرباحك: {format_currency(earnings['available_balance'])}
+                await query.edit_message_text(
+                    f"""
+                    ✅ *تم شراء المحاضرة بنجاح*
+                    
+                    🎬 {lecture['title']}
+                    💰 السعر: {format_currency(lecture['price'])}
+                    🏦 رصيدك المتبقي: {format_currency(db.get_user_balance(user_id))}
+                    
+                    📥 تم إرسال الملف إليك.
+                    """,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=get_main_menu_keyboard(user_id)
+                )
                 
-                📞 لسحب الأرباح تواصل مع: {SUPPORT_USERNAME}
-                """
-                try:
-                    await context.bot.send_message(lecture['teacher_id'], teacher_msg, parse_mode=ParseMode.MARKDOWN)
-                except:
-                    pass
-            
-            if is_admin(ADMIN_ID) and db.get_setting('admin_notifications') == '1':
-                await send_admin_notification(context, f"""
-                💰 *عملية بيع محاضرة جديدة*
+                earnings = db.get_vip_earnings(lecture['teacher_id'])
+                if earnings:
+                    teacher_msg = f"""
+                    💰 *بيع جديد لمحاضرة*
+                    
+                    🎬 المحاضرة: {lecture['title']}
+                    👤 المشتري: {query.from_user.first_name} (ID: {user_id})
+                    💰 السعر: {format_currency(lecture['price'])}
+                    💵 ربحك: {format_currency(int(lecture['price'] * 0.6))}
+                    🏦 إجمالي أرباحك: {format_currency(earnings['available_balance'])}
+                    
+                    📞 لسحب الأرباح تواصل مع: {SUPPORT_USERNAME}
+                    """
+                    try:
+                        await context.bot.send_message(lecture['teacher_id'], teacher_msg, parse_mode=ParseMode.MARKDOWN)
+                    except:
+                        pass
                 
-                🎬 المحاضرة: {lecture['title']} (#{lecture_id})
-                👨‍🏫 المدرس: {lecture['first_name']} (ID: {lecture['teacher_id']})
-                👤 المشتري: {query.from_user.first_name} (ID: {user_id})
-                💰 السعر: {format_currency(lecture['price'])}
-                💵 ربح المدرس: {format_currency(int(lecture['price'] * 0.6))}
-                💵 ربح الإدارة: {format_currency(int(lecture['price'] * 0.4))}
-                """)
-                
-        except Exception as e:
-            logger.error(f"Error sending lecture file: {e}")
-            await query.edit_message_text("❌ حدث خطأ أثناء إرسال الملف. يرجى التواصل مع الدعم.")
+                if is_admin(ADMIN_ID) and db.get_setting('admin_notifications') == '1':
+                    await send_admin_notification(context, f"""
+                    💰 *عملية بيع محاضرة جديدة*
+                    
+                    🎬 المحاضرة: {lecture['title']} (#{lecture_id})
+                    👨‍🏫 المدرس: {lecture['first_name']} (ID: {lecture['teacher_id']})
+                    👤 المشتري: {query.from_user.first_name} (ID: {user_id})
+                    💰 السعر: {format_currency(lecture['price'])}
+                    💵 ربح المدرس: {format_currency(int(lecture['price'] * 0.6))}
+                    💵 ربح الإدارة: {format_currency(int(lecture['price'] * 0.4))}
+                    """)
+                    
+            except Exception as e:
+                logger.error(f"Error sending lecture file: {e}")
+                await query.edit_message_text("❌ حدث خطأ أثناء إرسال الملف. يرجى التواصل مع الدعم.")
+                db.add_balance(user_id, lecture['price'])
+                db.add_transaction(user_id, lecture['price'], 'refund', 'vip_lecture', 'استرجاع رصيد بسبب خطأ')
+        else:
+            await query.edit_message_text("❌ فشل في عملية الشراء. يرجى المحاولة لاحقاً.")
             db.add_balance(user_id, lecture['price'])
-            db.add_transaction(user_id, lecture['price'], 'refund', 'vip_lecture', 'استرجاع رصيد بسبب خطأ')
-    else:
-        await query.edit_message_text("❌ فشل في عملية الشراء. يرجى المحاولة لاحقاً.")
-        db.add_balance(user_id, lecture['price'])
+    except Exception as e:
+        logger.error(f"Error in buy_lecture: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def vip_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """اشتراك VIP"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not db.is_service_active('vip_subscribe'):
-        await query.edit_message_text(
-            "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    if db.is_vip_subscriber(user_id):
-        vip_info = db.get_vip_subscriber(user_id)
-        expiry_date = datetime.datetime.fromisoformat(vip_info['expiry_date'].replace('Z', '+00:00'))
+    try:
+        user_id = query.from_user.id
+        
+        if not db.is_service_active('vip_subscribe'):
+            await query.edit_message_text(
+                "⏸️ هذه الخدمة معطلة مؤقتاً من قبل الإدارة.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        if db.is_vip_subscriber(user_id):
+            vip_info = db.get_vip_subscriber(user_id)
+            expiry_date = datetime.datetime.fromisoformat(vip_info['expiry_date'].replace('Z', '+00:00'))
+            
+            await query.edit_message_text(
+                f"""
+                👑 *أنت مشترك في VIP بالفعل*
+                
+                📅 تاريخ الاشتراك: {format_date(vip_info['subscription_date'])}
+                ⏳ تاريخ الانتهاء: {format_date(expiry_date)}
+                📅 المتبقي: {(expiry_date - datetime.datetime.now()).days} يوم
+                
+                🎬 يمكنك الآن:
+                1. رفع محاضرات
+                2. كسب الأرباح (60% من مبيعات محاضراتك)
+                3. إدارة محاضراتك
+                4. سحب أرباحك
+                
+                📞 للاستفسار: {SUPPORT_USERNAME}
+                """,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        subscription_price = db.get_vip_subscription_price()
+        
+        keyboard = [
+            [InlineKeyboardButton(f"💳 اشتراك شهري ({format_currency(subscription_price)})", 
+             callback_data="confirm_vip_subscription")],
+            [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
+        ]
+        
+        subscription_text = f"""
+        👑 *اشتراك VIP للمدرسين*
+        
+        *المميزات:*
+        ✅ رفع محاضرات فيديو
+        ✅ تحديد سعر المحاضرة (أو مجانية)
+        ✅ كسب 60% من مبيعات كل محاضرة
+        ✅ إدارة محاضراتك (حذف/تعديل)
+        ✅ سحب أرباحك عبر الدعم الفني
+        ✅ تقييمات وتحليل أداء المحاضرات
+        
+        *الشروط:*
+        1. المحتوى تعليمي ومناسب
+        2. جودة مقبولة للفيديو
+        3. عدم انتهاك حقوق النشر
+        4. موافقة الإدارة على كل محاضرة
+        
+        *معلومات الدفع:*
+        💰 السعر الشهري: {format_currency(subscription_price)}
+        ⏳ المدة: 30 يوم
+        🔄 تجديد تلقائي: غير مفعل
+        
+        📞 للاستفسار: {SUPPORT_USERNAME}
+        """
         
         await query.edit_message_text(
-            f"""
-            👑 *أنت مشترك في VIP بالفعل*
-            
-            📅 تاريخ الاشتراك: {format_date(vip_info['subscription_date'])}
-            ⏳ تاريخ الانتهاء: {format_date(expiry_date)}
-            📅 المتبقي: {(expiry_date - datetime.datetime.now()).days} يوم
-            
-            🎬 يمكنك الآن:
-            1. رفع محاضرات
-            2. كسب الأرباح (60% من مبيعات محاضراتك)
-            3. إدارة محاضراتك
-            4. سحب أرباحك
-            
-            📞 للاستفسار: {SUPPORT_USERNAME}
-            """,
+            subscription_text,
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu_keyboard(user_id)
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-    
-    subscription_price = db.get_vip_subscription_price()
-    
-    keyboard = [
-        [InlineKeyboardButton(f"💳 اشتراك شهري ({format_currency(subscription_price)})", 
-         callback_data="confirm_vip_subscription")],
-        [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
-    ]
-    
-    subscription_text = f"""
-    👑 *اشتراك VIP للمدرسين*
-    
-    *المميزات:*
-    ✅ رفع محاضرات فيديو
-    ✅ تحديد سعر المحاضرة (أو مجانية)
-    ✅ كسب 60% من مبيعات كل محاضرة
-    ✅ إدارة محاضراتك (حذف/تعديل)
-    ✅ سحب أرباحك عبر الدعم الفني
-    ✅ تقييمات وتحليل أداء المحاضرات
-    
-    *الشروط:*
-    1. المحتوى تعليمي ومناسب
-    2. جودة مقبولة للفيديو
-    3. عدم انتهاك حقوق النشر
-    4. موافقة الإدارة على كل محاضرة
-    
-    *معلومات الدفع:*
-    💰 السعر الشهري: {format_currency(subscription_price)}
-    ⏳ المدة: 30 يوم
-    🔄 تجديد تلقائي: غير مفعل
-    
-    📞 للاستفسار: {SUPPORT_USERNAME}
-    """
-    
-    await query.edit_message_text(
-        subscription_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        logger.error(f"Error in vip_subscribe: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def confirm_vip_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تأكيد اشتراك VIP"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    subscription_price = db.get_vip_subscription_price()
-    
-    user_balance = db.get_user_balance(user_id)
-    if user_balance < subscription_price:
+    try:
+        user_id = query.from_user.id
+        subscription_price = db.get_vip_subscription_price()
+        
+        user_balance = db.get_user_balance(user_id)
+        if user_balance < subscription_price:
+            await query.edit_message_text(
+                f"❌ رصيدك غير كافي.\n\n💰 سعر الاشتراك: {format_currency(subscription_price)}\n🏦 رصيدك: {format_currency(user_balance)}",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        if not db.deduct_balance(user_id, subscription_price):
+            await query.edit_message_text("❌ فشل في عملية الاشتراك. يرجى المحاولة لاحقاً.")
+            return
+        
+        db.add_vip_subscriber(user_id, 30)
+        db.add_transaction(user_id, -subscription_price, 'payment', 'vip_subscription', 'اشتراك VIP شهري')
+        
         await query.edit_message_text(
-            f"❌ رصيدك غير كافي.\n\n💰 سعر الاشتراك: {format_currency(subscription_price)}\n🏦 رصيدك: {format_currency(user_balance)}",
+            f"""
+            ✅ *تم الاشتراك في VIP بنجاح*
+            
+            👑 *مبروك! أنت الآن مدرس VIP*
+            
+            📅 تاريخ الاشتراك: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+            ⏳ تاريخ الانتهاء: {(datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d %H:%M')}
+            💰 السعر: {format_currency(subscription_price)}
+            🏦 رصيدك المتبقي: {format_currency(db.get_user_balance(user_id))}
+            
+            🎬 *يمكنك الآن:*
+            1. 📤 رفع محاضرة (زر "رفع محاضرة")
+            2. 💰 كسب الأرباح (60% من المبيعات)
+            3. 🎓 إدارة محاضراتك (زر "محاضراتي")
+            4. 💸 سحب أرباحك (زر "رصيد أرباحي")
+            
+            📞 للاستفسار أو سحب الأرباح: {SUPPORT_USERNAME}
+            """,
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu_keyboard(user_id)
         )
-        return
-    
-    if not db.deduct_balance(user_id, subscription_price):
-        await query.edit_message_text("❌ فشل في عملية الاشتراك. يرجى المحاولة لاحقاً.")
-        return
-    
-    db.add_vip_subscriber(user_id, 30)
-    db.add_transaction(user_id, -subscription_price, 'payment', 'vip_subscription', 'اشتراك VIP شهري')
-    
-    await query.edit_message_text(
-        f"""
-        ✅ *تم الاشتراك في VIP بنجاح*
         
-        👑 *مبروك! أنت الآن مدرس VIP*
-        
-        📅 تاريخ الاشتراك: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
-        ⏳ تاريخ الانتهاء: {(datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d %H:%M')}
-        💰 السعر: {format_currency(subscription_price)}
-        🏦 رصيدك المتبقي: {format_currency(db.get_user_balance(user_id))}
-        
-        🎬 *يمكنك الآن:*
-        1. 📤 رفع محاضرة (زر "رفع محاضرة")
-        2. 💰 كسب الأرباح (60% من المبيعات)
-        3. 🎓 إدارة محاضراتك (زر "محاضراتي")
-        4. 💸 سحب أرباحك (زر "رصيد أرباحي")
-        
-        📞 للاستفسار أو سحب الأرباح: {SUPPORT_USERNAME}
-        """,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu_keyboard(user_id)
-    )
-    
-    if is_admin(ADMIN_ID) and db.get_setting('admin_notifications') == '1':
-        await send_admin_notification(context, f"""
-        👑 *اشتراك VIP جديد*
-        
-        👤 المستخدم: {query.from_user.first_name} (ID: {user_id})
-        📅 تاريخ الاشتراك: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
-        💰 السعر: {format_currency(subscription_price)}
-        """)
+        if is_admin(ADMIN_ID) and db.get_setting('admin_notifications') == '1':
+            await send_admin_notification(context, f"""
+            👑 *اشتراك VIP جديد*
+            
+            👤 المستخدم: {query.from_user.first_name} (ID: {user_id})
+            📅 تاريخ الاشتراك: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+            💰 السعر: {format_currency(subscription_price)}
+            """)
+    except Exception as e:
+        logger.error(f"Error in confirm_vip_subscription: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def vip_upload_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """رفع محاضرة VIP"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not db.is_vip_subscriber(user_id):
+    try:
+        user_id = query.from_user.id
+        
+        if not db.is_vip_subscriber(user_id):
+            await query.edit_message_text(
+                "❌ هذه الميزة للمشتركين في VIP فقط.\n\nاشترك في VIP لرفع محاضراتك وكسب الأرباح.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        instructions = """
+        📤 *رفع محاضرة جديدة*
+        
+        *خطوات رفع المحاضرة:*
+        1. أرسل ملف الفيديو (حد أقصى 100MB)
+        2. أدخل عنوان المحاضرة
+        3. أدخل وصف المحاضرة
+        4. أدخل السعر (أو 0 للمجانية)
+        
+        *ملاحظات مهمة:*
+        ⚠️ سيتم مراجعة المحاضرة من قبل الإدارة قبل النشر
+        ⚠️ المحتوى يجب أن يكون تعليمياً ومناسباً
+        ⚠️ جودة الفيديو يجب أن تكون مقبولة
+        ⚠️ 60% من المبيعات ستكون أرباحاً لك
+        
+        *أرسل ملف الفيديو الآن:*
+        """
+        
+        context.user_data['uploading_lecture'] = True
+        
         await query.edit_message_text(
-            "❌ هذه الميزة للمشتركين في VIP فقط.\n\nاشترك في VIP لرفع محاضراتك وكسب الأرباح.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            instructions,
+            parse_mode=ParseMode.MARKDOWN
         )
-        return
-    
-    instructions = """
-    📤 *رفع محاضرة جديدة*
-    
-    *خطوات رفع المحاضرة:*
-    1. أرسل ملف الفيديو (حد أقصى 100MB)
-    2. أدخل عنوان المحاضرة
-    3. أدخل وصف المحاضرة
-    4. أدخل السعر (أو 0 للمجانية)
-    
-    *ملاحظات مهمة:*
-    ⚠️ سيتم مراجعة المحاضرة من قبل الإدارة قبل النشر
-    ⚠️ المحتوى يجب أن يكون تعليمياً ومناسباً
-    ⚠️ جودة الفيديو يجب أن تكون مقبولة
-    ⚠️ 60% من المبيعات ستكون أرباحاً لك
-    
-    *أرسل ملف الفيديو الآن:*
-    """
-    
-    context.user_data['uploading_lecture'] = True
-    
-    await query.edit_message_text(
-        instructions,
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return VIP_LECTURE_FILE
+        
+        return VIP_LECTURE_FILE
+    except Exception as e:
+        logger.error(f"Error in vip_upload_lecture: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_vip_lecture_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة ملف محاضرة VIP"""
-    user_id = update.effective_user.id
-    
-    if not update.message.video and not update.message.document:
-        await update.message.reply_text("❌ يرجى إرسال ملف فيديو. حاول مرة أخرى:")
-        return VIP_LECTURE_FILE
-    
-    file_size = 0
-    file_id = None
-    
-    if update.message.video:
-        file_size = update.message.video.file_size or 0
-        file_id = update.message.video.file_id
-    elif update.message.document:
-        file_size = update.message.document.file_size or 0
-        file_id = update.message.document.file_id
-    
-    if file_size > 100 * 1024 * 1024:
-        await update.message.reply_text("❌ حجم الملف يتجاوز 100MB. يرجى إرسال ملف أصغر:")
-        return VIP_LECTURE_FILE
-    
-    context.user_data['lecture_file_id'] = file_id
-    
-    await update.message.reply_text("✅ تم استلام الملف.\n\n*أدخل عنوان المحاضرة:*", parse_mode=ParseMode.MARKDOWN)
-    return VIP_LECTURE_TITLE
+    try:
+        user_id = update.effective_user.id
+        
+        if not update.message.video and not update.message.document:
+            await update.message.reply_text("❌ يرجى إرسال ملف فيديو. حاول مرة أخرى:")
+            return VIP_LECTURE_FILE
+        
+        file_size = 0
+        file_id = None
+        
+        if update.message.video:
+            file_size = update.message.video.file_size or 0
+            file_id = update.message.video.file_id
+        elif update.message.document:
+            file_size = update.message.document.file_size or 0
+            file_id = update.message.document.file_id
+        
+        if file_size > 100 * 1024 * 1024:
+            await update.message.reply_text("❌ حجم الملف يتجاوز 100MB. يرجى إرسال ملف أصغر:")
+            return VIP_LECTURE_FILE
+        
+        context.user_data['lecture_file_id'] = file_id
+        
+        await update.message.reply_text("✅ تم استلام الملف.\n\n*أدخل عنوان المحاضرة:*", parse_mode=ParseMode.MARKDOWN)
+        return VIP_LECTURE_TITLE
+    except Exception as e:
+        logger.error(f"Error in process_vip_lecture_file: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_vip_lecture_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة عنوان المحاضرة"""
-    context.user_data['lecture_title'] = update.message.text
-    await update.message.reply_text("✅ تم حفظ العنوان.\n\n*أدخل وصف المحاضرة:*")
-    return VIP_LECTURE_DESC
+    try:
+        context.user_data['lecture_title'] = update.message.text
+        await update.message.reply_text("✅ تم حفظ العنوان.\n\n*أدخل وصف المحاضرة:*")
+        return VIP_LECTURE_DESC
+    except Exception as e:
+        logger.error(f"Error in process_vip_lecture_title: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_vip_lecture_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة وصف المحاضرة"""
-    context.user_data['lecture_desc'] = update.message.text
-    await update.message.reply_text("✅ تم حفظ الوصف.\n\n*أدخل سعر المحاضرة (أو 0 للمجانية):*")
-    return VIP_LECTURE_PRICE
+    try:
+        context.user_data['lecture_desc'] = update.message.text
+        await update.message.reply_text("✅ تم حفظ الوصف.\n\n*أدخل سعر المحاضرة (أو 0 للمجانية):*")
+        return VIP_LECTURE_PRICE
+    except Exception as e:
+        logger.error(f"Error in process_vip_lecture_desc: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_vip_lecture_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة سعر المحاضرة"""
@@ -2770,115 +2951,127 @@ async def process_vip_lecture_price(update: Update, context: ContextTypes.DEFAUL
     except ValueError:
         await update.message.reply_text("❌ يرجى إدخال رقم صحيح. حاول مرة أخرى:")
         return VIP_LECTURE_PRICE
+    except Exception as e:
+        logger.error(f"Error in process_vip_lecture_price: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def vip_my_lectures(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض محاضرات المدرس"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not db.is_vip_subscriber(user_id):
+    try:
+        user_id = query.from_user.id
+        
+        if not db.is_vip_subscriber(user_id):
+            await query.edit_message_text(
+                "❌ هذه الميزة للمشتركين في VIP فقط.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        lectures = db.get_teacher_lectures(user_id)
+        
+        if not lectures:
+            await query.edit_message_text(
+                "📭 لم تقم برفع أي محاضرات بعد.\n\nاستخدم زر \"رفع محاضرة\" لبدء رفع محاضراتك.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        lectures_text = "🎬 *محاضراتي*\n\n"
+        
+        for lecture in lectures:
+            status_emoji = {
+                'pending': '⏳',
+                'approved': '✅',
+                'rejected': '❌',
+                'deleted': '🗑️'
+            }.get(lecture['status'], '❓')
+            
+            price_text = format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'
+            
+            lectures_text += f"""
+            {status_emoji} *{lecture['title']}* #{lecture['lecture_id']}
+            💰 السعر: {price_text}
+            📊 الحالة: {lecture['status']}
+            👁️ المشاهدات: {lecture['views']:,}
+            🛒 المبيعات: {lecture['purchases']:,}
+            
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("📤 رفع محاضرة جديدة", callback_data="vip_upload_lecture")],
+            [InlineKeyboardButton("💰 رصيد أرباحي", callback_data="vip_my_earnings")],
+            [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
+        ]
+        
         await query.edit_message_text(
-            "❌ هذه الميزة للمشتركين في VIP فقط.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            lectures_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-    
-    lectures = db.get_teacher_lectures(user_id)
-    
-    if not lectures:
-        await query.edit_message_text(
-            "📭 لم تقم برفع أي محاضرات بعد.\n\nاستخدم زر \"رفع محاضرة\" لبدء رفع محاضراتك.",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
-    
-    lectures_text = "🎬 *محاضراتي*\n\n"
-    
-    for lecture in lectures:
-        status_emoji = {
-            'pending': '⏳',
-            'approved': '✅',
-            'rejected': '❌',
-            'deleted': '🗑️'
-        }.get(lecture['status'], '❓')
-        
-        price_text = format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'
-        
-        lectures_text += f"""
-        {status_emoji} *{lecture['title']}* #{lecture['lecture_id']}
-        💰 السعر: {price_text}
-        📊 الحالة: {lecture['status']}
-        👁️ المشاهدات: {lecture['views']:,}
-        🛒 المبيعات: {lecture['purchases']:,}
-        
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("📤 رفع محاضرة جديدة", callback_data="vip_upload_lecture")],
-        [InlineKeyboardButton("💰 رصيد أرباحي", callback_data="vip_my_earnings")],
-        [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
-    ]
-    
-    await query.edit_message_text(
-        lectures_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        logger.error(f"Error in vip_my_lectures: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def vip_my_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض أرباح المدرس"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not db.is_vip_subscriber(user_id):
+    try:
+        user_id = query.from_user.id
+        
+        if not db.is_vip_subscriber(user_id):
+            await query.edit_message_text(
+                "❌ هذه الميزة للمشتركين في VIP فقط.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
+        
+        earnings = db.get_vip_earnings(user_id)
+        
+        if not earnings:
+            earnings_text = """
+            💰 *أرباحي*
+            
+            📭 لا توجد أرباح حالياً.
+            
+            🎬 ارفع محاضرات وابدأ بيعها لكسب الأرباح.
+            💵 ستحصل على 60% من سعر كل محاضرة تباع.
+            """
+        else:
+            earnings_text = f"""
+            💰 *أرباحي*
+            
+            💵 *إجمالي الأرباح:* {format_currency(earnings['total_earnings'])}
+            🏦 *الرصيد المتاح للسحب:* {format_currency(earnings['available_balance'])}
+            💸 *المسحوب سابقاً:* {format_currency(earnings['withdrawn_balance'])}
+            
+            *ملاحظات:*
+            • تحصل على 60% من سعر كل محاضرة تباع
+            • يمكنك سحب الأرباح عبر التواصل مع الدعم الفني
+            • الأرباح تظهر بعد موافقة المشرف على عملية البيع
+            
+            📞 لسحب الأرباح تواصل مع: {SUPPORT_USERNAME}
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🎬 محاضراتي", callback_data="vip_my_lectures")],
+            [InlineKeyboardButton("📤 رفع محاضرة", callback_data="vip_upload_lecture")],
+            [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
+        ]
+        
         await query.edit_message_text(
-            "❌ هذه الميزة للمشتركين في VIP فقط.",
-            reply_markup=get_main_menu_keyboard(user_id)
+            earnings_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-    
-    earnings = db.get_vip_earnings(user_id)
-    
-    if not earnings:
-        earnings_text = """
-        💰 *أرباحي*
-        
-        📭 لا توجد أرباح حالياً.
-        
-        🎬 ارفع محاضرات وابدأ بيعها لكسب الأرباح.
-        💵 ستحصل على 60% من سعر كل محاضرة تباع.
-        """
-    else:
-        earnings_text = f"""
-        💰 *أرباحي*
-        
-        💵 *إجمالي الأرباح:* {format_currency(earnings['total_earnings'])}
-        🏦 *الرصيد المتاح للسحب:* {format_currency(earnings['available_balance'])}
-        💸 *المسحوب سابقاً:* {format_currency(earnings['withdrawn_balance'])}
-        
-        *ملاحظات:*
-        • تحصل على 60% من سعر كل محاضرة تباع
-        • يمكنك سحب الأرباح عبر التواصل مع الدعم الفني
-        • الأرباح تظهر بعد موافقة المشرف على عملية البيع
-        
-        📞 لسحب الأرباح تواصل مع: {SUPPORT_USERNAME}
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("🎬 محاضراتي", callback_data="vip_my_lectures")],
-        [InlineKeyboardButton("📤 رفع محاضرة", callback_data="vip_upload_lecture")],
-        [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
-    ]
-    
-    await query.edit_message_text(
-        earnings_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        logger.error(f"Error in vip_my_earnings: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 # ====================== معالجات المساعدة العامة ======================
 async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2886,152 +3079,168 @@ async def invite_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    invite_reward = db.get_invite_reward()
-    invite_link = generate_invite_link(user_id)
-    
-    invite_text = f"""
-    👥 *دعوة صديق*
-    
-    🔗 *رابط الدعوة الخاص بك:*
-    `{invite_link}`
-    
-    🎁 *مكافأة الدعوة:*
-    • أنت: {format_currency(invite_reward)} لكل صديق يسجل
-    • صديقك: 1000 دينار هدية ترحيبية
-    
-    *كيفية الدعوة:*
-    1. أرسل الرابط لصديقك
-    2. صديقك يضغط على الرابط
-    3. يسجل في البوت باستخدام /start
-    4. تحصل على {format_currency(invite_reward)} تلقائياً
-    
-    📊 *عدد المدعوين:* {user_data['total_invites']} صديق
-    
-    *ملاحظة:* المكافأة تمنح مرة واحدة لكل صديق.
-    """
-    
-    keyboard = [
-        [InlineKeyboardButton("📋 نسخ الرابط", callback_data="copy_invite_link")],
-        [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
-    ]
-    
-    await query.edit_message_text(
-        invite_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
+        
+        invite_reward = db.get_invite_reward()
+        invite_link = generate_invite_link(user_id)
+        
+        invite_text = f"""
+        👥 *دعوة صديق*
+        
+        🔗 *رابط الدعوة الخاص بك:*
+        `{invite_link}`
+        
+        🎁 *مكافأة الدعوة:*
+        • أنت: {format_currency(invite_reward)} لكل صديق يسجل
+        • صديقك: 1000 دينار هدية ترحيبية
+        
+        *كيفية الدعوة:*
+        1. أرسل الرابط لصديقك
+        2. صديقك يضغط على الرابط
+        3. يسجل في البوت باستخدام /start
+        4. تحصل على {format_currency(invite_reward)} تلقائياً
+        
+        📊 *عدد المدعوين:* {user_data['total_invites']} صديق
+        
+        *ملاحظة:* المكافأة تمنح مرة واحدة لكل صديق.
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton("📋 نسخ الرابط", callback_data="copy_invite_link")],
+            [InlineKeyboardButton("🏠 الرئيسية", callback_data="start")]
+        ]
+        
+        await query.edit_message_text(
+            invite_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in invite_friend: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def copy_invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نسخ رابط الدعوة"""
     query = update.callback_query
     await query.answer("📋 تم نسخ الرابط إلى الحافظة", show_alert=True)
     
-    user_id = query.from_user.id
-    invite_link = generate_invite_link(user_id)
-    
-    await query.edit_message_text(
-        f"🔗 *رابط الدعوة:*\n\n`{invite_link}`\n\n📋 الرابط جاهز للنسخ. انسخه وأرسله لأصدقائك.",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu_keyboard(user_id)
-    )
+    try:
+        user_id = query.from_user.id
+        invite_link = generate_invite_link(user_id)
+        
+        await query.edit_message_text(
+            f"🔗 *رابط الدعوة:*\n\n`{invite_link}`\n\n📋 الرابط جاهز للنسخ. انسخه وأرسله لأصدقائك.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu_keyboard(user_id)
+        )
+    except Exception as e:
+        logger.error(f"Error in copy_invite_link: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض إحصائيات المستخدم"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    transactions = db.get_user_transactions(user_id, limit=5)
-    exemptions = db.get_user_exemptions(user_id)
-    
-    stats_text = f"""
-    📊 *إحصائياتي*
-    
-    👤 *المعلومات الشخصية:*
-    • الاسم: {user_data['first_name']} {user_data['last_name'] or ''}
-    • اليوزر: {user_data['username'] or 'غير متوفر'}
-    • الرصيد: {format_currency(user_data['balance'])}
-    • تاريخ التسجيل: {format_date(user_data['created_at'])}
-    
-    📈 *النشاط:*
-    • عدد عمليات حساب الإعفاء: {len(exemptions)}
-    • عدد المدعوين: {user_data['total_invites']}
-    • آخر نشاط: {format_time_ago(user_data['last_active'])}
-    
-    💰 *آخر العمليات:*
-    """
-    
-    if transactions:
-        for trans in transactions:
-            emoji = "➕" if trans['amount'] > 0 else "➖"
-            amount = abs(trans['amount'])
-            stats_text += f"\n{emoji} {format_currency(amount)} - {trans['description'][:30]}..."
-    else:
-        stats_text += "\n📭 لا توجد عمليات سابقة."
-    
-    if db.is_vip_subscriber(user_id):
-        vip_info = db.get_vip_subscriber(user_id)
-        expiry_date = datetime.datetime.fromisoformat(vip_info['expiry_date'].replace('Z', '+00:00'))
-        days_left = (expiry_date - datetime.datetime.now()).days
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
         
-        stats_text += f"""
+        transactions = db.get_user_transactions(user_id, limit=5)
+        exemptions = db.get_user_exemptions(user_id)
         
-        👑 *عضوية VIP:*
-        • حالة: ✅ مفعل
-        • تاريخ الانتهاء: {format_date(expiry_date)}
-        • الأيام المتبقية: {days_left} يوم
+        stats_text = f"""
+        📊 *إحصائياتي*
+        
+        👤 *المعلومات الشخصية:*
+        • الاسم: {user_data['first_name']} {user_data['last_name'] or ''}
+        • اليوزر: {user_data['username'] or 'غير متوفر'}
+        • الرصيد: {format_currency(user_data['balance'])}
+        • تاريخ التسجيل: {format_date(user_data['created_at'])}
+        
+        📈 *النشاط:*
+        • عدد عمليات حساب الإعفاء: {len(exemptions)}
+        • عدد المدعوين: {user_data['total_invites']}
+        • آخر نشاط: {format_time_ago(user_data['last_active'])}
+        
+        💰 *آخر العمليات:*
         """
         
-        earnings = db.get_vip_earnings(user_id)
-        if earnings:
+        if transactions:
+            for trans in transactions:
+                emoji = "➕" if trans['amount'] > 0 else "➖"
+                amount = abs(trans['amount'])
+                stats_text += f"\n{emoji} {format_currency(amount)} - {trans['description'][:30]}..."
+        else:
+            stats_text += "\n📭 لا توجد عمليات سابقة."
+        
+        if db.is_vip_subscriber(user_id):
+            vip_info = db.get_vip_subscriber(user_id)
+            expiry_date = datetime.datetime.fromisoformat(vip_info['expiry_date'].replace('Z', '+00:00'))
+            days_left = (expiry_date - datetime.datetime.now()).days
+            
             stats_text += f"""
-            • إجمالي الأرباح: {format_currency(earnings['total_earnings'])}
-            • رصيد قابل للسحب: {format_currency(earnings['available_balance'])}
+            
+            👑 *عضوية VIP:*
+            • حالة: ✅ مفعل
+            • تاريخ الانتهاء: {format_date(expiry_date)}
+            • الأيام المتبقية: {days_left} يوم
             """
-    
-    stats_text += f"\n\n📞 الدعم الفني: {SUPPORT_USERNAME}"
-    
-    await query.edit_message_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu_keyboard(user_id)
-    )
+            
+            earnings = db.get_vip_earnings(user_id)
+            if earnings:
+                stats_text += f"""
+                • إجمالي الأرباح: {format_currency(earnings['total_earnings'])}
+                • رصيد قابل للسحب: {format_currency(earnings['available_balance'])}
+                """
+        
+        stats_text += f"\n\n📞 الدعم الفني: {SUPPORT_USERNAME}"
+        
+        await query.edit_message_text(
+            stats_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu_keyboard(user_id)
+        )
+    except Exception as e:
+        logger.error(f"Error in my_stats: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def my_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض رصيد المستخدم (من زر)"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_data = db.get_user(user_id)
-    
-    if not user_data:
-        await query.edit_message_text("❌ حسابك غير مسجل. استخدم /start للتسجيل.")
-        return
-    
-    balance_msg = f"""
-    💰 *رصيدك الحالي*
-    
-    🏦 الرصيد: {format_currency(user_data['balance'])}
-    
-    🔗 رابط الدعوة الخاص بك:
-    `{generate_invite_link(user_id)}`
-    
-    🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
-    
-    📞 للشحن: {SUPPORT_USERNAME}
-    """
-    
-    await query.edit_message_text(
-        balance_msg,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu_keyboard(user_id)
-    )
+    try:
+        user_id = query.from_user.id
+        user_data = db.get_user(user_id)
+        
+        if not user_data:
+            await query.edit_message_text("❌ حسابك غير مسجل. استخدم /start للتسجيل.")
+            return
+        
+        balance_msg = f"""
+        💰 *رصيدك الحالي*
+        
+        🏦 الرصيد: {format_currency(user_data['balance'])}
+        
+        🔗 رابط الدعوة الخاص بك:
+        `{generate_invite_link(user_id)}`
+        
+        🎁 مكافأة الدعوة: {format_currency(db.get_invite_reward())}
+        
+        📞 للشحن: {SUPPORT_USERNAME}
+        """
+        
+        await query.edit_message_text(
+            balance_msg,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu_keyboard(user_id)
+        )
+    except Exception as e:
+        logger.error(f"Error in my_balance: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 # ====================== لوحة التحكم - الإدارة الكاملة ======================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3039,140 +3248,157 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
-    if not is_admin(user_id):
-        await query.edit_message_text("❌ ليس لديك صلاحية للوصول إلى لوحة التحكم.")
-        return
-    
-    admin_text = """
-    🛠️ *لوحة التحكم - المشرف*
-    
-    *الإحصائيات السريعة:*
-    """
-    
-    total_users = db.get_user_count()
-    active_users = db.get_active_users_count(7)
-    vip_subscribers = len(db.get_all_vip_subscribers())
-    pending_lectures = len(db.get_pending_lectures())
-    pending_questions = len(db.get_pending_questions())
-    
-    admin_text += f"""
-    👥 المستخدمين: {total_users:,}
-    📱 النشطين (أسبوع): {active_users:,}
-    👑 مشتركي VIP: {vip_subscribers:,}
-    ⏳ محاضرات منتظرة: {pending_lectures}
-    ❓ أسئلة منتظرة: {pending_questions}
-    
-    *اختر القسم الذي تريد إدارته:*
-    """
-    
-    await query.edit_message_text(
-        admin_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_admin_keyboard()
-    )
+    try:
+        user_id = query.from_user.id
+        
+        if not is_admin(user_id):
+            await query.edit_message_text("❌ ليس لديك صلاحية للوصول إلى لوحة التحكم.")
+            return
+        
+        admin_text = """
+        🛠️ *لوحة التحكم - المشرف*
+        
+        *الإحصائيات السريعة:*
+        """
+        
+        total_users = db.get_user_count()
+        active_users = db.get_active_users_count(7)
+        vip_subscribers = len(db.get_all_vip_subscribers())
+        pending_lectures = len(db.get_pending_lectures())
+        pending_questions = len(db.get_pending_questions())
+        
+        admin_text += f"""
+        👥 المستخدمين: {total_users:,}
+        📱 النشطين (أسبوع): {active_users:,}
+        👑 مشتركي VIP: {vip_subscribers:,}
+        ⏳ محاضرات منتظرة: {pending_lectures}
+        ❓ أسئلة منتظرة: {pending_questions}
+        
+        *اختر القسم الذي تريد إدارته:*
+        """
+        
+        await query.edit_message_text(
+            admin_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_admin_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_panel: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة المستخدمين"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "👥 *إدارة المستخدمين*\n\nاختر الإجراء المطلوب:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_users_management_keyboard()
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "👥 *إدارة المستخدمين*\n\nاختر الإجراء المطلوب:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_users_management_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_users: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض قائمة المستخدمين مع ترقيم الصفحات"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("admin_users_list_", "")
-    page = int(data) if data.isdigit() else 1
-    
-    limit = 10
-    offset = (page - 1) * limit
-    
-    users = db.get_all_users(limit=limit, offset=offset)
-    
-    if not users:
-        await query.edit_message_text("📭 لا يوجد مستخدمين في هذه الصفحة.")
-        return
-    
-    users_text = f"👥 *المستخدمين - الصفحة {page}*\n\n"
-    
-    for user in users:
-        status = "🚫 محظور" if user['is_banned'] else "✅ نشط"
-        vip_status = "👑 VIP" if user['is_vip'] else "👤 عادي"
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        users_text += f"""
-        👤 {user['first_name']} {user['last_name'] or ''}
-        🆔 {user['user_id']} | @{user['username'] or 'بدون'}
-        💰 {format_currency(user['balance'])} | {status} | {vip_status}
-        📅 {format_date(user['created_at'])}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = []
-    nav_buttons = []
-    
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_users_list_{page-1}"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"صفحة {page}", callback_data="noop"))
-    
-    total_users = db.get_user_count()
-    if offset + limit < total_users:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_users_list_{page+1}"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([
-        InlineKeyboardButton("🚫 حظر", callback_data=f"admin_ban_user_page_{page}"),
-        InlineKeyboardButton("✅ فك حظر", callback_data=f"admin_unban_user_page_{page}")
-    ])
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")])
-    
-    await query.edit_message_text(
-        users_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        data = query.data.replace("admin_users_list_", "")
+        page = int(data) if data.isdigit() else 1
+        
+        limit = 10
+        offset = (page - 1) * limit
+        
+        users = db.get_all_users(limit=limit, offset=offset)
+        
+        if not users:
+            await query.edit_message_text("📭 لا يوجد مستخدمين في هذه الصفحة.")
+            return
+        
+        users_text = f"👥 *المستخدمين - الصفحة {page}*\n\n"
+        
+        for user in users:
+            status = "🚫 محظور" if user['is_banned'] else "✅ نشط"
+            vip_status = "👑 VIP" if user['is_vip'] else "👤 عادي"
+            
+            users_text += f"""
+            👤 {user['first_name']} {user['last_name'] or ''}
+            🆔 {user['user_id']} | @{user['username'] or 'بدون'}
+            💰 {format_currency(user['balance'])} | {status} | {vip_status}
+            📅 {format_date(user['created_at'])}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = []
+        nav_buttons = []
+        
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_users_list_{page-1}"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"صفحة {page}", callback_data="noop"))
+        
+        total_users = db.get_user_count()
+        if offset + limit < total_users:
+            nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_users_list_{page+1}"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([
+            InlineKeyboardButton("🚫 حظر", callback_data=f"admin_ban_user_page_{page}"),
+            InlineKeyboardButton("✅ فك حظر", callback_data=f"admin_unban_user_page_{page}")
+        ])
+        
+        keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")])
+        
+        await query.edit_message_text(
+            users_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_users_list: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """حظر مستخدم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("admin_ban_user_page_", "")
-    page = int(data) if data.isdigit() else 0
-    
-    if page > 0:
-        await query.edit_message_text(
-            f"🚫 *حظر مستخدم - الصفحة {page}*\n\nأرسل أيدي المستخدم الذي تريد حظره:",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        context.user_data['ban_page'] = page
-    else:
-        await query.edit_message_text(
-            "🚫 *حظر مستخدم*\n\nأرسل أيدي المستخدم الذي تريد حظره:",
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    return "BAN_USER"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        data = query.data.replace("admin_ban_user_page_", "")
+        page = int(data) if data.isdigit() else 0
+        
+        if page > 0:
+            await query.edit_message_text(
+                f"🚫 *حظر مستخدم - الصفحة {page}*\n\nأرسل أيدي المستخدم الذي تريد حظره:",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            context.user_data['ban_page'] = page
+        else:
+            await query.edit_message_text(
+                "🚫 *حظر مستخدم*\n\nأرسل أيدي المستخدم الذي تريد حظره:",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        
+        return "BAN_USER"
+    except Exception as e:
+        logger.error(f"Error in admin_ban_user: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة حظر المستخدم"""
@@ -3222,31 +3448,40 @@ async def process_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return "BAN_USER"
+    except Exception as e:
+        logger.error(f"Error in process_ban_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """فك حظر مستخدم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("admin_unban_user_page_", "")
-    page = int(data) if data.isdigit() else 0
-    
-    if page > 0:
-        await query.edit_message_text(
-            f"✅ *فك حظر مستخدم - الصفحة {page}*\n\nأرسل أيدي المستخدم الذي تريد فك حظره:",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        context.user_data['unban_page'] = page
-    else:
-        await query.edit_message_text(
-            "✅ *فك حظر مستخدم*\n\nأرسل أيدي المستخدم الذي تريد فك حظره:",
-            parse_mode=ParseMode.MARKDOWN
-        )
-    
-    return "UNBAN_USER"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        data = query.data.replace("admin_unban_user_page_", "")
+        page = int(data) if data.isdigit() else 0
+        
+        if page > 0:
+            await query.edit_message_text(
+                f"✅ *فك حظر مستخدم - الصفحة {page}*\n\nأرسل أيدي المستخدم الذي تريد فك حظره:",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            context.user_data['unban_page'] = page
+        else:
+            await query.edit_message_text(
+                "✅ *فك حظر مستخدم*\n\nأرسل أيدي المستخدم الذي تريد فك حظره:",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        
+        return "UNBAN_USER"
+    except Exception as e:
+        logger.error(f"Error in admin_unban_user: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة فك حظر المستخدم"""
@@ -3292,74 +3527,93 @@ async def process_unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return "UNBAN_USER"
+    except Exception as e:
+        logger.error(f"Error in process_unban_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بحث عن مستخدم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "🔍 *بحث عن مستخدم*\n\nأرسل أيدي المستخدم أو اسمه أو يوزره:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "SEARCH_USER"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "🔍 *بحث عن مستخدم*\n\nأرسل أيدي المستخدم أو اسمه أو يوزره:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "SEARCH_USER"
+    except Exception as e:
+        logger.error(f"Error in admin_search_user: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة البحث عن مستخدم"""
-    search_term = update.message.text
-    
-    users = db.search_users(search_term)
-    
-    if not users:
-        await update.message.reply_text("❌ لم يتم العثور على مستخدمين بهذا الاسم.")
-        return ConversationHandler.END
-    
-    users_text = "🔍 *نتائج البحث*\n\n"
-    
-    for user in users:
-        status = "🚫 محظور" if user['is_banned'] else "✅ نشط"
-        vip_status = "👑 VIP" if user['is_vip'] else "👤 عادي"
+    try:
+        search_term = update.message.text
         
-        users_text += f"""
-        👤 {user['first_name']} {user['last_name'] or ''}
-        🆔 {user['user_id']} | @{user['username'] or 'بدون'}
-        💰 {format_currency(user['balance'])} | {status} | {vip_status}
-        📅 {format_date(user['created_at'])}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("🚫 حظر", callback_data="admin_ban_user"),
-         InlineKeyboardButton("✅ فك حظر", callback_data="admin_unban_user")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")]
-    ]
-    
-    await update.message.reply_text(
-        users_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    return ConversationHandler.END
+        users = db.search_users(search_term)
+        
+        if not users:
+            await update.message.reply_text("❌ لم يتم العثور على مستخدمين بهذا الاسم.")
+            return ConversationHandler.END
+        
+        users_text = "🔍 *نتائج البحث*\n\n"
+        
+        for user in users:
+            status = "🚫 محظور" if user['is_banned'] else "✅ نشط"
+            vip_status = "👑 VIP" if user['is_vip'] else "👤 عادي"
+            
+            users_text += f"""
+            👤 {user['first_name']} {user['last_name'] or ''}
+            🆔 {user['user_id']} | @{user['username'] or 'بدون'}
+            💰 {format_currency(user['balance'])} | {status} | {vip_status}
+            📅 {format_date(user['created_at'])}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🚫 حظر", callback_data="admin_ban_user"),
+             InlineKeyboardButton("✅ فك حظر", callback_data="admin_unban_user")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")]
+        ]
+        
+        await update.message.reply_text(
+            users_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in process_search_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_promote_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """رفع مستخدم إلى مشرف"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "👑 *رفع مستخدم إلى مشرف*\n\nأرسل أيدي المستخدم الذي تريد رفعه:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "PROMOTE_USER"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "👑 *رفع مستخدم إلى مشرف*\n\nأرسل أيدي المستخدم الذي تريد رفعه:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "PROMOTE_USER"
+    except Exception as e:
+        logger.error(f"Error in admin_promote_user: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_promote_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة رفع مستخدم إلى مشرف"""
@@ -3395,240 +3649,273 @@ async def process_promote_user(update: Update, context: ContextTypes.DEFAULT_TYP
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return "PROMOTE_USER"
+    except Exception as e:
+        logger.error(f"Error in process_promote_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض سجل المعاملات"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("admin_transactions_", "")
-    page = int(data) if data.isdigit() else 1
-    
-    limit = 10
-    offset = (page - 1) * limit
-    
-    transactions = db.get_all_transactions(limit=limit, offset=offset)
-    
-    if not transactions:
-        await query.edit_message_text("📭 لا توجد معاملات في هذه الصفحة.")
-        return
-    
-    transactions_text = f"📋 *سجل المعاملات - الصفحة {page}*\n\n"
-    
-    for trans in transactions:
-        user_name = trans['username'] or trans['first_name'] or f"المستخدم {trans['user_id']}"
-        amount = trans['amount']
-        type_icon = "➕" if amount > 0 else "➖"
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        transactions_text += f"""
-        {type_icon} *{user_name}*
-        💰 {format_currency(abs(amount))} - {trans['type']}
-        📝 {trans['description'][:30]}...
-        📅 {format_date(trans['created_at'])}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = []
-    nav_buttons = []
-    
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_transactions_{page-1}"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"صفحة {page}", callback_data="noop"))
-    
-    nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_transactions_{page+1}"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")])
-    
-    await query.edit_message_text(
-        transactions_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        data = query.data.replace("admin_transactions_", "")
+        page = int(data) if data.isdigit() else 1
+        
+        limit = 10
+        offset = (page - 1) * limit
+        
+        transactions = db.get_all_transactions(limit=limit, offset=offset)
+        
+        if not transactions:
+            await query.edit_message_text("📭 لا توجد معاملات في هذه الصفحة.")
+            return
+        
+        transactions_text = f"📋 *سجل المعاملات - الصفحة {page}*\n\n"
+        
+        for trans in transactions:
+            user_name = trans['username'] or trans['first_name'] or f"المستخدم {trans['user_id']}"
+            amount = trans['amount']
+            type_icon = "➕" if amount > 0 else "➖"
+            
+            transactions_text += f"""
+            {type_icon} *{user_name}*
+            💰 {format_currency(abs(amount))} - {trans['type']}
+            📝 {trans['description'][:30]}...
+            📅 {format_date(trans['created_at'])}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = []
+        nav_buttons = []
+        
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_transactions_{page-1}"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"صفحة {page}", callback_data="noop"))
+        
+        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_transactions_{page+1}"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")])
+        
+        await query.edit_message_text(
+            transactions_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_transactions: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_manage_questions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة الأسئلة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    questions = db.get_pending_questions()
-    
-    if not questions:
-        await query.edit_message_text("✅ لا توجد أسئلة منتظرة للمراجعة.")
-        return
-    
-    if 'question_index' not in context.user_data:
-        context.user_data['question_index'] = 0
-        context.user_data['current_questions'] = questions
-    
-    idx = context.user_data['question_index']
-    question = context.user_data['current_questions'][idx]
-    
-    keyboard = []
-    
-    nav_buttons = []
-    if idx > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="question_prev"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(questions)}", callback_data="noop"))
-    
-    if idx < len(questions) - 1:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="question_next"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([
-        InlineKeyboardButton("✅ الموافقة", callback_data=f"admin_approve_question_{question['question_id']}"),
-        InlineKeyboardButton("❌ الرفض", callback_data=f"admin_reject_question_{question['question_id']}")
-    ])
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")])
-    
-    question_text = f"""
-    ❓ *سؤال منتظر للمراجعة* #{question['question_id']}
-    
-    👤 *الطالب:* {question['first_name']} (ID: {question['user_id']})
-    💰 *المبلغ المدفوع:* {format_currency(question['price_paid'])}
-    
-    📝 *السؤال:*
-    {question['question_text'][:300]}...
-    
-    📅 *تاريخ الإرسال:* {format_date(question['created_at'])}
-    """
-    
-    await query.edit_message_text(
-        question_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        questions = db.get_pending_questions()
+        
+        if not questions:
+            await query.edit_message_text("✅ لا توجد أسئلة منتظرة للمراجعة.")
+            return
+        
+        if 'question_index' not in context.user_data:
+            context.user_data['question_index'] = 0
+            context.user_data['current_questions'] = questions
+        
+        idx = context.user_data['question_index']
+        question = context.user_data['current_questions'][idx]
+        
+        keyboard = []
+        
+        nav_buttons = []
+        if idx > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="question_prev"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(questions)}", callback_data="noop"))
+        
+        if idx < len(questions) - 1:
+            nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="question_next"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([
+            InlineKeyboardButton("✅ الموافقة", callback_data=f"admin_approve_question_{question['question_id']}"),
+            InlineKeyboardButton("❌ الرفض", callback_data=f"admin_reject_question_{question['question_id']}")
+        ])
+        
+        keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_users")])
+        
+        question_text = f"""
+        ❓ *سؤال منتظر للمراجعة* #{question['question_id']}
+        
+        👤 *الطالب:* {question['first_name']} (ID: {question['user_id']})
+        💰 *المبلغ المدفوع:* {format_currency(question['price_paid'])}
+        
+        📝 *السؤال:*
+        {question['question_text'][:300]}...
+        
+        📅 *تاريخ الإرسال:* {format_date(question['created_at'])}
+        """
+        
+        await query.edit_message_text(
+            question_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_manage_questions: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def navigate_questions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التنقل بين الأسئلة"""
     query = update.callback_query
     await query.answer()
     
-    if query.data == "question_prev":
-        context.user_data['question_index'] -= 1
-    elif query.data == "question_next":
-        context.user_data['question_index'] += 1
-    
-    await admin_manage_questions(update, context)
+    try:
+        if query.data == "question_prev":
+            context.user_data['question_index'] -= 1
+        elif query.data == "question_next":
+            context.user_data['question_index'] += 1
+        
+        await admin_manage_questions(update, context)
+    except Exception as e:
+        logger.error(f"Error in navigate_questions: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_approve_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """موافقة على سؤال"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    question_id = int(query.data.replace("admin_approve_question_", ""))
-    
-    if db.approve_question(question_id, query.from_user.id):
-        question = db.get_question_by_id(question_id)
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        if question:
-            try:
-                student_msg = f"""
-                ✅ *تمت الموافقة على سؤالك*
-                
-                ❓ سؤالك: {question['question_text'][:100]}...
-                
-                📌 السؤال الآن منشور في قسم الأسئلة.
-                ℹ️ سيتم إشعارك عند تلقي إجابة.
-                """
-                await context.bot.send_message(question['user_id'], student_msg, parse_mode=ParseMode.MARKDOWN)
-            except:
-                pass
+        question_id = int(query.data.replace("admin_approve_question_", ""))
         
-        await query.edit_message_text(
-            f"✅ تمت الموافقة على السؤال #{question_id}",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await query.edit_message_text(
-            f"❌ فشل في الموافقة على السؤال #{question_id}",
-            reply_markup=get_admin_keyboard()
-        )
+        if db.approve_question(question_id, query.from_user.id):
+            question = db.get_question_by_id(question_id)
+            
+            if question:
+                try:
+                    student_msg = f"""
+                    ✅ *تمت الموافقة على سؤالك*
+                    
+                    ❓ سؤالك: {question['question_text'][:100]}...
+                    
+                    📌 السؤال الآن منشور في قسم الأسئلة.
+                    ℹ️ سيتم إشعارك عند تلقي إجابة.
+                    """
+                    await context.bot.send_message(question['user_id'], student_msg, parse_mode=ParseMode.MARKDOWN)
+                except:
+                    pass
+            
+            await query.edit_message_text(
+                f"✅ تمت الموافقة على السؤال #{question_id}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ فشل في الموافقة على السؤال #{question_id}",
+                reply_markup=get_admin_keyboard()
+            )
+    except Exception as e:
+        logger.error(f"Error in admin_approve_question: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_reject_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """رفض سؤال"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    question_id = int(query.data.replace("admin_reject_question_", ""))
-    
-    question = db.get_question_by_id(question_id)
-    
-    if db.reject_question(question_id):
-        if question:
-            try:
-                student_msg = f"""
-                ❌ *تم رفض سؤالك*
-                
-                ❓ سؤالك: {question['question_text'][:100]}...
-                
-                📌 السؤال تم رفضه من قبل الإدارة.
-                💰 تم إعادة رصيدك: {format_currency(question['price_paid'])}
-                """
-                await context.bot.send_message(question['user_id'], student_msg, parse_mode=ParseMode.MARKDOWN)
-                
-                db.add_balance(question['user_id'], question['price_paid'])
-                db.add_transaction(question['user_id'], question['price_paid'], 'refund', 'help_student', 'استرجاع رصيد لرفض السؤال')
-            except:
-                pass
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        await query.edit_message_text(
-            f"❌ تم رفض السؤال #{question_id}",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await query.edit_message_text(
-            f"❌ فشل في رفض السؤال #{question_id}",
-            reply_markup=get_admin_keyboard()
-        )
+        question_id = int(query.data.replace("admin_reject_question_", ""))
+        
+        question = db.get_question_by_id(question_id)
+        
+        if db.reject_question(question_id):
+            if question:
+                try:
+                    student_msg = f"""
+                    ❌ *تم رفض سؤالك*
+                    
+                    ❓ سؤالك: {question['question_text'][:100]}...
+                    
+                    📌 السؤال تم رفضه من قبل الإدارة.
+                    💰 تم إعادة رصيدك: {format_currency(question['price_paid'])}
+                    """
+                    await context.bot.send_message(question['user_id'], student_msg, parse_mode=ParseMode.MARKDOWN)
+                    
+                    db.add_balance(question['user_id'], question['price_paid'])
+                    db.add_transaction(question['user_id'], question['price_paid'], 'refund', 'help_student', 'استرجاع رصيد لرفض السؤال')
+                except:
+                    pass
+            
+            await query.edit_message_text(
+                f"❌ تم رفض السؤال #{question_id}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ فشل في رفض السؤال #{question_id}",
+                reply_markup=get_admin_keyboard()
+            )
+    except Exception as e:
+        logger.error(f"Error in admin_reject_question: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_finance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة الشحن والخصم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "💰 *إدارة الشحن والخصم*\n\nاختر الإجراء المطلوب:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_finance_management_keyboard()
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "💰 *إدارة الشحن والخصم*\n\nاختر الإجراء المطلوب:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_finance_management_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_finance: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_charge(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """شحن رصيد مستخدم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "💰 *شحن رصيد*\n\nأرسل أيدي المستخدم الذي تريد شحن رصيده:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ADMIN_CHARGE_USER
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "💰 *شحن رصيد*\n\nأرسل أيدي المستخدم الذي تريد شحن رصيده:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return ADMIN_CHARGE_USER
+    except Exception as e:
+        logger.error(f"Error in admin_charge: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_charge_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة أيدي المستخدم للشحن"""
@@ -3655,6 +3942,10 @@ async def process_charge_user(update: Update, context: ContextTypes.DEFAULT_TYPE
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return ADMIN_CHARGE_USER
+    except Exception as e:
+        logger.error(f"Error in process_charge_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_charge_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة مبلغ الشحن"""
@@ -3697,21 +3988,30 @@ async def process_charge_amount(update: Update, context: ContextTypes.DEFAULT_TY
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال مبلغ صحيح (أرقام فقط):")
         return ADMIN_CHARGE_AMOUNT
+    except Exception as e:
+        logger.error(f"Error in process_charge_amount: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_deduct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """خصم رصيد مستخدم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "💸 *خصم رصيد*\n\nأرسل أيدي المستخدم الذي تريد خصم رصيده:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ADMIN_DEDUCT_USER
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "💸 *خصم رصيد*\n\nأرسل أيدي المستخدم الذي تريد خصم رصيده:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return ADMIN_DEDUCT_USER
+    except Exception as e:
+        logger.error(f"Error in admin_deduct: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_deduct_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة أيدي المستخدم للخصم"""
@@ -3738,6 +4038,10 @@ async def process_deduct_user(update: Update, context: ContextTypes.DEFAULT_TYPE
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return ADMIN_DEDUCT_USER
+    except Exception as e:
+        logger.error(f"Error in process_deduct_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_deduct_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة مبلغ الخصم"""
@@ -3791,73 +4095,86 @@ async def process_deduct_amount(update: Update, context: ContextTypes.DEFAULT_TY
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال مبلغ صحيح (أرقام فقط):")
         return ADMIN_DEDUCT_AMOUNT
+    except Exception as e:
+        logger.error(f"Error in process_deduct_amount: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_finance_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض إحصائيات مالية"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    stats = db.get_financial_stats()
-    
-    stats_text = """
-    📈 *الإحصائيات المالية*
-    
-    *إحصائيات شاملة:*
-    """
-    
-    overall = stats.get('overall', {})
-    today = stats.get('today', {})
-    
-    stats_text += f"""
-    💰 إجمالي الشحنات: {format_currency(overall.get('total_charged', 0))}
-    💸 إجمالي المدفوعات: {format_currency(overall.get('total_payments', 0))}
-    🔄 إجمالي الخصومات: {format_currency(overall.get('total_deducted', 0))}
-    ↩️ إجمالي الاسترجاعات: {format_currency(overall.get('total_refunds', 0))}
-    📊 إجمالي المعاملات: {overall.get('total_transactions', 0):,}
-    
-    *إحصائيات اليوم:*
-    📅 المعاملات اليوم: {today.get('today_transactions', 0)}
-    💰 الدخل اليوم: {format_currency(today.get('today_income', 0))}
-    
-    *إحصائيات الخدمات:*
-    """
-    
-    services = stats.get('services', [])
-    if services:
-        for service in services:
-            stats_text += f"\n• {service['service']}: {service['count']:,} عملية - {format_currency(service['total_amount'])}"
-    else:
-        stats_text += "\n📭 لا توجد إحصائيات للخدمات."
-    
-    keyboard = [
-        [InlineKeyboardButton("💰 شحن رصيد", callback_data="admin_charge"),
-         InlineKeyboardButton("💸 خصم رصيد", callback_data="admin_deduct")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_finance")]
-    ]
-    
-    await query.edit_message_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        stats = db.get_financial_stats()
+        
+        stats_text = """
+        📈 *الإحصائيات المالية*
+        
+        *إحصائيات شاملة:*
+        """
+        
+        overall = stats.get('overall', {})
+        today = stats.get('today', {})
+        
+        stats_text += f"""
+        💰 إجمالي الشحنات: {format_currency(overall.get('total_charged', 0))}
+        💸 إجمالي المدفوعات: {format_currency(overall.get('total_payments', 0))}
+        🔄 إجمالي الخصومات: {format_currency(overall.get('total_deducted', 0))}
+        ↩️ إجمالي الاسترجاعات: {format_currency(overall.get('total_refunds', 0))}
+        📊 إجمالي المعاملات: {overall.get('total_transactions', 0):,}
+        
+        *إحصائيات اليوم:*
+        📅 المعاملات اليوم: {today.get('today_transactions', 0)}
+        💰 الدخل اليوم: {format_currency(today.get('today_income', 0))}
+        
+        *إحصائيات الخدمات:*
+        """
+        
+        services = stats.get('services', [])
+        if services:
+            for service in services:
+                stats_text += f"\n• {service['service']}: {service['count']:,} عملية - {format_currency(service['total_amount'])}"
+        else:
+            stats_text += "\n📭 لا توجد إحصائيات للخدمات."
+        
+        keyboard = [
+            [InlineKeyboardButton("💰 شحن رصيد", callback_data="admin_charge"),
+             InlineKeyboardButton("💸 خصم رصيد", callback_data="admin_deduct")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_finance")]
+        ]
+        
+        await query.edit_message_text(
+            stats_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_finance_stats: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_deduct_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """خصم أرباح مدرس VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "💸 *خصم أرباح مدرس VIP*\n\nأرسل أيدي المدرس الذي تريد خصم أرباحه:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ADMIN_VIP_DEDUCT_USER
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "💸 *خصم أرباح مدرس VIP*\n\nأرسل أيدي المدرس الذي تريد خصم أرباحه:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return ADMIN_VIP_DEDUCT_USER
+    except Exception as e:
+        logger.error(f"Error in admin_deduct_vip: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_vip_deduct_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة أيدي المدرس للخصم"""
@@ -3887,6 +4204,10 @@ async def process_vip_deduct_user(update: Update, context: ContextTypes.DEFAULT_
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return ADMIN_VIP_DEDUCT_USER
+    except Exception as e:
+        logger.error(f"Error in process_vip_deduct_user: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_vip_deduct_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة مبلغ خصم الأرباح"""
@@ -3935,6 +4256,10 @@ async def process_vip_deduct_amount(update: Update, context: ContextTypes.DEFAUL
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال مبلغ صحيح (أرقام فقط):")
         return ADMIN_VIP_DEDUCT_AMOUNT
+    except Exception as e:
+        logger.error(f"Error in process_vip_deduct_amount: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 # ====================== إدارة VIP الكاملة ======================
 async def admin_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3942,92 +4267,105 @@ async def admin_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "👑 *إدارة نظام VIP*\n\nاختر القسم الذي تريد إدارته:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_vip_management_keyboard()
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "👑 *إدارة نظام VIP*\n\nاختر القسم الذي تريد إدارته:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_vip_management_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_vip_subscribers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المشتركين VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("admin_vip_subscribers_", "")
-    page = int(data) if data.isdigit() else 1
-    
-    subscribers = db.get_all_vip_subscribers()
-    
-    if not subscribers:
-        await query.edit_message_text("📭 لا يوجد مشتركين في VIP حالياً.")
-        return
-    
-    limit = 10
-    offset = (page - 1) * limit
-    page_subscribers = subscribers[offset:offset + limit]
-    
-    subscribers_text = f"👑 *المشتركون في VIP - الصفحة {page}*\n\n"
-    
-    for sub in page_subscribers:
-        expiry_date = datetime.datetime.fromisoformat(sub['expiry_date'].replace('Z', '+00:00'))
-        days_left = (expiry_date - datetime.datetime.now()).days
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        subscribers_text += f"""
-        👤 {sub['first_name']} {sub['last_name'] or ''}
-        🆔 {sub['user_id']} | @{sub['username'] or 'بدون'}
-        📅 الاشتراك: {format_date(sub['subscription_date'])}
-        ⏳ الانتهاء: {format_date(expiry_date)} ({days_left} يوم)
-        🔄 تجديد تلقائي: {'✅' if sub['auto_renew'] else '❌'}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = []
-    nav_buttons = []
-    
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_vip_subscribers_{page-1}"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"صفحة {page}", callback_data="noop"))
-    
-    if offset + limit < len(subscribers):
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_vip_subscribers_{page+1}"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([
-        InlineKeyboardButton("🚫 إلغاء اشتراك", callback_data="admin_cancel_vip"),
-        InlineKeyboardButton("🔄 تجديد اشتراك", callback_data="admin_renew_vip")
-    ])
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")])
-    
-    await query.edit_message_text(
-        subscribers_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        data = query.data.replace("admin_vip_subscribers_", "")
+        page = int(data) if data.isdigit() else 1
+        
+        subscribers = db.get_all_vip_subscribers()
+        
+        if not subscribers:
+            await query.edit_message_text("📭 لا يوجد مشتركين في VIP حالياً.")
+            return
+        
+        limit = 10
+        offset = (page - 1) * limit
+        page_subscribers = subscribers[offset:offset + limit]
+        
+        subscribers_text = f"👑 *المشتركون في VIP - الصفحة {page}*\n\n"
+        
+        for sub in page_subscribers:
+            expiry_date = datetime.datetime.fromisoformat(sub['expiry_date'].replace('Z', '+00:00'))
+            days_left = (expiry_date - datetime.datetime.now()).days
+            
+            subscribers_text += f"""
+            👤 {sub['first_name']} {sub['last_name'] or ''}
+            🆔 {sub['user_id']} | @{sub['username'] or 'بدون'}
+            📅 الاشتراك: {format_date(sub['subscription_date'])}
+            ⏳ الانتهاء: {format_date(expiry_date)} ({days_left} يوم)
+            🔄 تجديد تلقائي: {'✅' if sub['auto_renew'] else '❌'}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = []
+        nav_buttons = []
+        
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"admin_vip_subscribers_{page-1}"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"صفحة {page}", callback_data="noop"))
+        
+        if offset + limit < len(subscribers):
+            nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data=f"admin_vip_subscribers_{page+1}"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([
+            InlineKeyboardButton("🚫 إلغاء اشتراك", callback_data="admin_cancel_vip"),
+            InlineKeyboardButton("🔄 تجديد اشتراك", callback_data="admin_renew_vip")
+        ])
+        
+        keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")])
+        
+        await query.edit_message_text(
+            subscribers_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip_subscribers: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_cancel_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إلغاء اشتراك VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "🚫 *إلغاء اشتراك VIP*\n\nأرسل أيدي المستخدم الذي تريد إلغاء اشتراكه:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "CANCEL_VIP"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "🚫 *إلغاء اشتراك VIP*\n\nأرسل أيدي المستخدم الذي تريد إلغاء اشتراكه:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "CANCEL_VIP"
+    except Exception as e:
+        logger.error(f"Error in admin_cancel_vip: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_cancel_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة إلغاء اشتراك VIP"""
@@ -4059,21 +4397,30 @@ async def process_cancel_vip(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return "CANCEL_VIP"
+    except Exception as e:
+        logger.error(f"Error in process_cancel_vip: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_renew_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تجديد اشتراك VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "🔄 *تجديد اشتراك VIP*\n\nأرسل أيدي المستخدم الذي تريد تجديد اشتراكه:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "RENEW_VIP"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "🔄 *تجديد اشتراك VIP*\n\nأرسل أيدي المستخدم الذي تريد تجديد اشتراكه:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "RENEW_VIP"
+    except Exception as e:
+        logger.error(f"Error in admin_renew_vip: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_renew_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تجديد اشتراك VIP"""
@@ -4101,332 +4448,373 @@ async def process_renew_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال أيدي صحيح (أرقام فقط):")
         return "RENEW_VIP"
+    except Exception as e:
+        logger.error(f"Error in process_renew_vip: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_vip_expiring(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المشتركين المنتهية اشتراكاتهم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    subscribers = db.get_expiring_vip_subscriptions(7)
-    
-    if not subscribers:
-        await query.edit_message_text("✅ لا توجد اشتراكات VIP تنتهي خلال الأسبوع القادم.")
-        return
-    
-    subscribers_text = "⏳ *اشتراكات VIP تنتهي قريباً*\n\n"
-    
-    for sub in subscribers:
-        expiry_date = datetime.datetime.fromisoformat(sub['expiry_date'].replace('Z', '+00:00'))
-        days_left = (expiry_date - datetime.datetime.now()).days
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        subscribers_text += f"""
-        👤 {sub['first_name']} {sub['last_name'] or ''}
-        🆔 {sub['user_id']} | @{sub['username'] or 'بدون'}
-        ⏳ تنتهي بعد: {days_left} يوم
-        📅 تاريخ الانتهاء: {format_date(expiry_date)}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("🔄 تجديد اشتراك", callback_data="admin_renew_vip")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
-    ]
-    
-    await query.edit_message_text(
-        subscribers_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        subscribers = db.get_expiring_vip_subscriptions(7)
+        
+        if not subscribers:
+            await query.edit_message_text("✅ لا توجد اشتراكات VIP تنتهي خلال الأسبوع القادم.")
+            return
+        
+        subscribers_text = "⏳ *اشتراكات VIP تنتهي قريباً*\n\n"
+        
+        for sub in subscribers:
+            expiry_date = datetime.datetime.fromisoformat(sub['expiry_date'].replace('Z', '+00:00'))
+            days_left = (expiry_date - datetime.datetime.now()).days
+            
+            subscribers_text += f"""
+            👤 {sub['first_name']} {sub['last_name'] or ''}
+            🆔 {sub['user_id']} | @{sub['username'] or 'بدون'}
+            ⏳ تنتهي بعد: {days_left} يوم
+            📅 تاريخ الانتهاء: {format_date(expiry_date)}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 تجديد اشتراك", callback_data="admin_renew_vip")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
+        ]
+        
+        await query.edit_message_text(
+            subscribers_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip_expiring: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_vip_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المحاضرات المنتظرة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    lectures = db.get_pending_lectures()
-    
-    if not lectures:
-        await query.edit_message_text("✅ لا توجد محاضرات منتظرة للمراجعة.")
-        return
-    
-    if 'pending_lecture_index' not in context.user_data:
-        context.user_data['pending_lecture_index'] = 0
-        context.user_data['pending_lectures'] = lectures
-    
-    idx = context.user_data['pending_lecture_index']
-    lecture = context.user_data['pending_lectures'][idx]
-    
-    keyboard = []
-    
-    nav_buttons = []
-    if idx > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="pending_lecture_prev"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(lectures)}", callback_data="noop"))
-    
-    if idx < len(lectures) - 1:
-        nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="pending_lecture_next"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([
-        InlineKeyboardButton("✅ الموافقة", callback_data=f"admin_approve_lecture_{lecture['lecture_id']}"),
-        InlineKeyboardButton("❌ الرفض", callback_data=f"admin_reject_lecture_{lecture['lecture_id']}")
-    ])
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")])
-    
-    lecture_text = f"""
-    ⏳ *محاضرة منتظرة للمراجعة* #{lecture['lecture_id']}
-    
-    👨‍🏫 *المدرس:* {lecture['first_name']} (ID: {lecture['teacher_id']})
-    🎬 *العنوان:* {lecture['title']}
-    💰 *السعر:* {format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'}
-    
-    📝 *الوصف:*
-    {lecture['description'][:300]}...
-    
-    📅 *تاريخ الرفع:* {format_date(lecture['created_at'])}
-    """
-    
-    await query.edit_message_text(
-        lecture_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        lectures = db.get_pending_lectures()
+        
+        if not lectures:
+            await query.edit_message_text("✅ لا توجد محاضرات منتظرة للمراجعة.")
+            return
+        
+        if 'pending_lecture_index' not in context.user_data:
+            context.user_data['pending_lecture_index'] = 0
+            context.user_data['pending_lectures'] = lectures
+        
+        idx = context.user_data['pending_lecture_index']
+        lecture = context.user_data['pending_lectures'][idx]
+        
+        keyboard = []
+        
+        nav_buttons = []
+        if idx > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data="pending_lecture_prev"))
+        
+        nav_buttons.append(InlineKeyboardButton(f"{idx+1}/{len(lectures)}", callback_data="noop"))
+        
+        if idx < len(lectures) - 1:
+            nav_buttons.append(InlineKeyboardButton("التالي ➡️", callback_data="pending_lecture_next"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([
+            InlineKeyboardButton("✅ الموافقة", callback_data=f"admin_approve_lecture_{lecture['lecture_id']}"),
+            InlineKeyboardButton("❌ الرفض", callback_data=f"admin_reject_lecture_{lecture['lecture_id']}")
+        ])
+        
+        keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")])
+        
+        lecture_text = f"""
+        ⏳ *محاضرة منتظرة للمراجعة* #{lecture['lecture_id']}
+        
+        👨‍🏫 *المدرس:* {lecture['first_name']} (ID: {lecture['teacher_id']})
+        🎬 *العنوان:* {lecture['title']}
+        💰 *السعر:* {format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'}
+        
+        📝 *الوصف:*
+        {lecture['description'][:300]}...
+        
+        📅 *تاريخ الرفع:* {format_date(lecture['created_at'])}
+        """
+        
+        await query.edit_message_text(
+            lecture_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip_pending: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def navigate_pending_lectures(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التنقل بين المحاضرات المنتظرة"""
     query = update.callback_query
     await query.answer()
     
-    if query.data == "pending_lecture_prev":
-        context.user_data['pending_lecture_index'] -= 1
-    elif query.data == "pending_lecture_next":
-        context.user_data['pending_lecture_index'] += 1
-    
-    await admin_vip_pending(update, context)
+    try:
+        if query.data == "pending_lecture_prev":
+            context.user_data['pending_lecture_index'] -= 1
+        elif query.data == "pending_lecture_next":
+            context.user_data['pending_lecture_index'] += 1
+        
+        await admin_vip_pending(update, context)
+    except Exception as e:
+        logger.error(f"Error in navigate_pending_lectures: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_approve_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """موافقة على محاضرة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    lecture_id = int(query.data.replace("admin_approve_lecture_", ""))
-    
-    if db.approve_lecture(lecture_id, query.from_user.id):
-        lecture = db.get_lecture_by_id(lecture_id)
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        if lecture:
-            try:
-                teacher_msg = f"""
-                ✅ *تمت الموافقة على محاضرتك*
-                
-                🎬 {lecture['title']}
-                💰 السعر: {format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'}
-                
-                📌 المحاضرة الآن مرئية للجميع في قسم محاضرات VIP.
-                
-                *تذكر:* 60% من المبيعات ستكون أرباحاً لك.
-                """
-                await context.bot.send_message(lecture['teacher_id'], teacher_msg, parse_mode=ParseMode.MARKDOWN)
-            except:
-                pass
+        lecture_id = int(query.data.replace("admin_approve_lecture_", ""))
         
-        await query.edit_message_text(
-            f"✅ تمت الموافقة على المحاضرة #{lecture_id}",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await query.edit_message_text(
-            f"❌ فشل في الموافقة على المحاضرة #{lecture_id}",
-            reply_markup=get_admin_keyboard()
-        )
+        if db.approve_lecture(lecture_id, query.from_user.id):
+            lecture = db.get_lecture_by_id(lecture_id)
+            
+            if lecture:
+                try:
+                    teacher_msg = f"""
+                    ✅ *تمت الموافقة على محاضرتك*
+                    
+                    🎬 {lecture['title']}
+                    💰 السعر: {format_currency(lecture['price']) if lecture['price'] > 0 else 'مجاني'}
+                    
+                    📌 المحاضرة الآن مرئية للجميع في قسم محاضرات VIP.
+                    
+                    *تذكر:* 60% من المبيعات ستكون أرباحاً لك.
+                    """
+                    await context.bot.send_message(lecture['teacher_id'], teacher_msg, parse_mode=ParseMode.MARKDOWN)
+                except:
+                    pass
+            
+            await query.edit_message_text(
+                f"✅ تمت الموافقة على المحاضرة #{lecture_id}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ فشل في الموافقة على المحاضرة #{lecture_id}",
+                reply_markup=get_admin_keyboard()
+            )
+    except Exception as e:
+        logger.error(f"Error in admin_approve_lecture: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_reject_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """رفض محاضرة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    lecture_id = int(query.data.replace("admin_reject_lecture_", ""))
-    
-    if db.reject_lecture(lecture_id):
-        lecture = db.get_lecture_by_id(lecture_id)
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        if lecture:
-            try:
-                teacher_msg = f"""
-                ❌ *تم رفض محاضرتك*
-                
-                🎬 {lecture['title']}
-                
-                📌 المحاضرة تم رفضها من قبل الإدارة.
-                ℹ️ للاستفسار يرجى التواصل مع الدعم الفني.
-                """
-                await context.bot.send_message(lecture['teacher_id'], teacher_msg, parse_mode=ParseMode.MARKDOWN)
-            except:
-                pass
+        lecture_id = int(query.data.replace("admin_reject_lecture_", ""))
         
-        await query.edit_message_text(
-            f"❌ تم رفض المحاضرة #{lecture_id}",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await query.edit_message_text(
-            f"❌ فشل في رفض المحاضرة #{lecture_id}",
-            reply_markup=get_admin_keyboard()
-        )
+        if db.reject_lecture(lecture_id):
+            lecture = db.get_lecture_by_id(lecture_id)
+            
+            if lecture:
+                try:
+                    teacher_msg = f"""
+                    ❌ *تم رفض محاضرتك*
+                    
+                    🎬 {lecture['title']}
+                    
+                    📌 المحاضرة تم رفضها من قبل الإدارة.
+                    ℹ️ للاستفسار يرجى التواصل مع الدعم الفني.
+                    """
+                    await context.bot.send_message(lecture['teacher_id'], teacher_msg, parse_mode=ParseMode.MARKDOWN)
+                except:
+                    pass
+            
+            await query.edit_message_text(
+                f"❌ تم رفض المحاضرة #{lecture_id}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ فشل في رفض المحاضرة #{lecture_id}",
+                reply_markup=get_admin_keyboard()
+            )
+    except Exception as e:
+        logger.error(f"Error in admin_reject_lecture: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_vip_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض إحصائيات VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    stats = db.get_overall_stats()
-    
-    stats_text = """
-    📊 *إحصائيات نظام VIP*
-    
-    *إحصائيات المستخدمين:*
-    """
-    
-    users = stats.get('users', {})
-    vip = stats.get('vip', {})
-    sales = stats.get('sales', {})
-    
-    stats_text += f"""
-    👥 إجمالي المستخدمين: {users.get('total_users', 0):,}
-    👑 مستخدمين VIP: {users.get('vip_users', 0):,}
-    🏦 إجمالي الأرصدة: {format_currency(users.get('total_balance', 0))}
-    
-    *إحصائيات المبيعات:*
-    🛒 إجمالي المبيعات: {sales.get('total_sales', 0):,}
-    💰 إجمالي الإيرادات: {format_currency(sales.get('total_revenue', 0))}
-    💵 أرباح المدرسين: {format_currency(sales.get('total_teacher_earnings', 0))}
-    💼 أرباح الإدارة: {format_currency(sales.get('total_admin_earnings', 0))}
-    
-    *إحصائيات المشتركين:*
-    👑 مشتركين نشطين: {vip.get('active_vip', 0):,}
-    """
-    
-    all_earnings = db.get_all_vip_earnings()
-    if all_earnings:
-        stats_text += "\n\n*أعلى المدرسين ربحاً:*"
-        for i, earning in enumerate(all_earnings[:5], 1):
-            stats_text += f"\n{i}. {earning['first_name']}: {format_currency(earning['available_balance'])}"
-    
-    keyboard = [
-        [InlineKeyboardButton("💰 أرباح المدرسين", callback_data="admin_vip_earnings"),
-         InlineKeyboardButton("👥 المشتركون", callback_data="admin_vip_subscribers_1")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
-    ]
-    
-    await query.edit_message_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        stats = db.get_overall_stats()
+        
+        stats_text = """
+        📊 *إحصائيات نظام VIP*
+        
+        *إحصائيات المستخدمين:*
+        """
+        
+        users = stats.get('users', {})
+        vip = stats.get('vip', {})
+        sales = stats.get('sales', {})
+        
+        stats_text += f"""
+        👥 إجمالي المستخدمين: {users.get('total_users', 0):,}
+        👑 مستخدمين VIP: {users.get('vip_users', 0):,}
+        🏦 إجمالي الأرصدة: {format_currency(users.get('total_balance', 0))}
+        
+        *إحصائيات المبيعات:*
+        🛒 إجمالي المبيعات: {sales.get('total_sales', 0):,}
+        💰 إجمالي الإيرادات: {format_currency(sales.get('total_revenue', 0))}
+        💵 أرباح المدرسين: {format_currency(sales.get('total_teacher_earnings', 0))}
+        💼 أرباح الإدارة: {format_currency(sales.get('total_admin_earnings', 0))}
+        
+        *إحصائيات المشتركين:*
+        👑 مشتركين نشطين: {vip.get('active_vip', 0):,}
+        """
+        
+        all_earnings = db.get_all_vip_earnings()
+        if all_earnings:
+            stats_text += "\n\n*أعلى المدرسين ربحاً:*"
+            for i, earning in enumerate(all_earnings[:5], 1):
+                stats_text += f"\n{i}. {earning['first_name']}: {format_currency(earning['available_balance'])}"
+        
+        keyboard = [
+            [InlineKeyboardButton("💰 أرباح المدرسين", callback_data="admin_vip_earnings"),
+             InlineKeyboardButton("👥 المشتركون", callback_data="admin_vip_subscribers_1")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
+        ]
+        
+        await query.edit_message_text(
+            stats_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip_stats: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_vip_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض أرباح جميع المدرسين"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    earnings = db.get_all_vip_earnings()
-    
-    if not earnings:
-        await query.edit_message_text("📭 لا توجد أرباح للمدرسين حالياً.")
-        return
-    
-    earnings_text = "💰 *أرباح المدرسين*\n\n"
-    
-    for i, earning in enumerate(earnings, 1):
-        earnings_text += f"""
-        {i}. {earning['first_name']} {earning['last_name'] or ''}
-        🆔 {earning['teacher_id']} | @{earning['username'] or 'بدون'}
-        💰 إجمالي الأرباح: {format_currency(earning['total_earnings'])}
-        🏦 متاح للسحب: {format_currency(earning['available_balance'])}
-        💸 مسحوب: {format_currency(earning['withdrawn_balance'])}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 خصم أرباح", callback_data="admin_deduct_vip")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
-    ]
-    
-    await query.edit_message_text(
-        earnings_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        earnings = db.get_all_vip_earnings()
+        
+        if not earnings:
+            await query.edit_message_text("📭 لا توجد أرباح للمدرسين حالياً.")
+            return
+        
+        earnings_text = "💰 *أرباح المدرسين*\n\n"
+        
+        for i, earning in enumerate(earnings, 1):
+            earnings_text += f"""
+            {i}. {earning['first_name']} {earning['last_name'] or ''}
+            🆔 {earning['teacher_id']} | @{earning['username'] or 'بدون'}
+            💰 إجمالي الأرباح: {format_currency(earning['total_earnings'])}
+            🏦 متاح للسحب: {format_currency(earning['available_balance'])}
+            💸 مسحوب: {format_currency(earning['withdrawn_balance'])}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("💳 خصم أرباح", callback_data="admin_deduct_vip")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
+        ]
+        
+        await query.edit_message_text(
+            earnings_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip_earnings: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_vip_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إعدادات VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    vip_price = db.get_vip_subscription_price()
-    
-    keyboard = [
-        [InlineKeyboardButton(f"💰 تحديث سعر الاشتراك ({format_currency(vip_price)})", 
-         callback_data="admin_update_vip_price")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
-    ]
-    
-    settings_text = f"""
-    🔧 *إعدادات VIP*
-    
-    *الإعدادات الحالية:*
-    💰 سعر الاشتراك الشهري: {format_currency(vip_price)}
-    
-    *اختر الإعداد الذي تريد تعديله:*
-    """
-    
-    await query.edit_message_text(
-        settings_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        vip_price = db.get_vip_subscription_price()
+        
+        keyboard = [
+            [InlineKeyboardButton(f"💰 تحديث سعر الاشتراك ({format_currency(vip_price)})", 
+             callback_data="admin_update_vip_price")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_vip")]
+        ]
+        
+        settings_text = f"""
+        🔧 *إعدادات VIP*
+        
+        *الإعدادات الحالية:*
+        💰 سعر الاشتراك الشهري: {format_currency(vip_price)}
+        
+        *اختر الإعداد الذي تريد تعديله:*
+        """
+        
+        await query.edit_message_text(
+            settings_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_vip_settings: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_update_vip_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تحديث سعر اشتراك VIP"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_price = db.get_vip_subscription_price()
-    
-    await query.edit_message_text(
-        f"💰 *تحديث سعر اشتراك VIP*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "UPDATE_VIP_PRICE"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_price = db.get_vip_subscription_price()
+        
+        await query.edit_message_text(
+            f"💰 *تحديث سعر اشتراك VIP*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "UPDATE_VIP_PRICE"
+    except Exception as e:
+        logger.error(f"Error in admin_update_vip_price: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_update_vip_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تحديث سعر VIP"""
@@ -4447,6 +4835,10 @@ async def process_update_vip_price(update: Update, context: ContextTypes.DEFAULT
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال سعر صحيح (أرقام فقط):")
         return "UPDATE_VIP_PRICE"
+    except Exception as e:
+        logger.error(f"Error in process_update_vip_price: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 # ====================== إدارة الخدمات الكاملة ======================
 async def admin_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4454,113 +4846,130 @@ async def admin_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "⚙️ *إدارة الخدمات*\n\nاختر الخدمة التي تريد إدارتها:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_services_management_keyboard()
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "⚙️ *إدارة الخدمات*\n\nاختر الخدمة التي تريد إدارتها:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_services_management_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_services: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_toggle_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تفعيل/تعطيل الخدمات"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    services = db.get_all_services()
-    
-    keyboard = []
-    for service in services:
-        service_name = service['service_name']
-        display_name = service['display_name']
-        is_active = service['is_active'] == 1
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        status_icon = "✅" if is_active else "⏸️"
-        action = "تعطيل" if is_active else "تفعيل"
-        callback_data = f"toggle_service_{service_name}_{0 if is_active else 1}"
-        button_text = f"{status_icon} {display_name} ({action})"
+        services = db.get_all_services()
         
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-    
-    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_services")])
-    
-    await query.edit_message_text(
-        "🔄 *تفعيل/تعطيل الخدمات*\n\nاضغط على الخدمة لتفعيلها أو تعطيلها:\n\n✅ = مفعلة\n⏸️ = معطلة",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        keyboard = []
+        for service in services:
+            service_name = service['service_name']
+            display_name = service['display_name']
+            is_active = service['is_active'] == 1
+            
+            status_icon = "✅" if is_active else "⏸️"
+            action = "تعطيل" if is_active else "تفعيل"
+            callback_data = f"toggle_service_{service_name}_{0 if is_active else 1}"
+            button_text = f"{status_icon} {display_name} ({action})"
+            
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_services")])
+        
+        await query.edit_message_text(
+            "🔄 *تفعيل/تعطيل الخدمات*\n\nاضغط على الخدمة لتفعيلها أو تعطيلها:\n\n✅ = مفعلة\n⏸️ = معطلة",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_toggle_services: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def toggle_service_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تفعيل/تعطيل الخدمة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("toggle_service_", "")
-    parts = data.split("_")
-    
-    if len(parts) >= 2:
-        service_name = parts[0]
-        new_status = int(parts[1])
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        if db.toggle_service(service_name, new_status):
-            status_text = "مفعلة" if new_status == 1 else "معطلة"
+        data = query.data.replace("toggle_service_", "")
+        parts = data.split("_")
+        
+        if len(parts) >= 2:
+            service_name = parts[0]
+            new_status = int(parts[1])
             
-            services = db.get_all_services()
-            keyboard = []
-            
-            for service in services:
-                s_name = service['service_name']
-                display_name = service['display_name']
-                is_active = service['is_active'] == 1
+            if db.toggle_service(service_name, new_status):
+                status_text = "مفعلة" if new_status == 1 else "معطلة"
                 
-                status_icon = "✅" if is_active else "⏸️"
-                action = "تعطيل" if is_active else "تفعيل"
-                callback_data = f"toggle_service_{s_name}_{0 if is_active else 1}"
-                button_text = f"{status_icon} {display_name} ({action})"
+                services = db.get_all_services()
+                keyboard = []
                 
-                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-            
-            keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_services")])
-            
-            await query.edit_message_text(
-                f"✅ تم {status_text} الخدمة بنجاح.\n\n🔄 *تفعيل/تعطيل الخدمات*",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+                for service in services:
+                    s_name = service['service_name']
+                    display_name = service['display_name']
+                    is_active = service['is_active'] == 1
+                    
+                    status_icon = "✅" if is_active else "⏸️"
+                    action = "تعطيل" if is_active else "تفعيل"
+                    callback_data = f"toggle_service_{s_name}_{0 if is_active else 1}"
+                    button_text = f"{status_icon} {display_name} ({action})"
+                    
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+                
+                keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_services")])
+                
+                await query.edit_message_text(
+                    f"✅ تم {status_text} الخدمة بنجاح.\n\n🔄 *تفعيل/تعطيل الخدمات*",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await query.edit_message_text(
+                    "❌ فشل في تحديث حالة الخدمة.",
+                    reply_markup=get_admin_keyboard()
+                )
         else:
             await query.edit_message_text(
-                "❌ فشل في تحديث حالة الخدمة.",
+                "❌ بيانات غير صالحة.",
                 reply_markup=get_admin_keyboard()
             )
-    else:
-        await query.edit_message_text(
-            "❌ بيانات غير صالحة.",
-            reply_markup=get_admin_keyboard()
-        )
+    except Exception as e:
+        logger.error(f"Error in toggle_service_callback: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_service_exemption(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تعديل سعر حساب الإعفاء"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_price = db.get_service_price('exemption_calc')
-    
-    await query.edit_message_text(
-        f"🎓 *تعديل سعر حساب الإعفاء*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "UPDATE_EXEMPTION_PRICE"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_price = db.get_service_price('exemption_calc')
+        
+        await query.edit_message_text(
+            f"🎓 *تعديل سعر حساب الإعفاء*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "UPDATE_EXEMPTION_PRICE"
+    except Exception as e:
+        logger.error(f"Error in admin_service_exemption: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_update_exemption_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تحديث سعر حساب الإعفاء"""
@@ -4581,23 +4990,32 @@ async def process_update_exemption_price(update: Update, context: ContextTypes.D
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال سعر صحيح (أرقام فقط):")
         return "UPDATE_EXEMPTION_PRICE"
+    except Exception as e:
+        logger.error(f"Error in process_update_exemption_price: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_service_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تعديل سعر تلخيص الملازم"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_price = db.get_service_price('pdf_summary')
-    
-    await query.edit_message_text(
-        f"📚 *تعديل سعر تلخيص الملازم*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "UPDATE_SUMMARY_PRICE"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_price = db.get_service_price('pdf_summary')
+        
+        await query.edit_message_text(
+            f"📚 *تعديل سعر تلخيص الملازم*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "UPDATE_SUMMARY_PRICE"
+    except Exception as e:
+        logger.error(f"Error in admin_service_summary: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_update_summary_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تحديث سعر تلخيص الملازم"""
@@ -4618,23 +5036,32 @@ async def process_update_summary_price(update: Update, context: ContextTypes.DEF
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال سعر صحيح (أرقام فقط):")
         return "UPDATE_SUMMARY_PRICE"
+    except Exception as e:
+        logger.error(f"Error in process_update_summary_price: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_service_qna(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تعديل سعر سؤال وجواب"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_price = db.get_service_price('qna')
-    
-    await query.edit_message_text(
-        f"❓ *تعديل سعر سؤال وجواب*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "UPDATE_QNA_PRICE"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_price = db.get_service_price('qna')
+        
+        await query.edit_message_text(
+            f"❓ *تعديل سعر سؤال وجواب*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "UPDATE_QNA_PRICE"
+    except Exception as e:
+        logger.error(f"Error in admin_service_qna: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_update_qna_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تحديث سعر سؤال وجواب"""
@@ -4655,23 +5082,32 @@ async def process_update_qna_price(update: Update, context: ContextTypes.DEFAULT
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال سعر صحيح (أرقام فقط):")
         return "UPDATE_QNA_PRICE"
+    except Exception as e:
+        logger.error(f"Error in process_update_qna_price: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_service_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تعديل سعر ساعدوني طالب"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_price = db.get_service_price('help_student')
-    
-    await query.edit_message_text(
-        f"👨‍🎓 *تعديل سعر ساعدوني طالب*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return "UPDATE_HELP_PRICE"
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_price = db.get_service_price('help_student')
+        
+        await query.edit_message_text(
+            f"👨‍🎓 *تعديل سعر ساعدوني طالب*\n\nالسعر الحالي: {format_currency(current_price)}\n\nأرسل السعر الجديد:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return "UPDATE_HELP_PRICE"
+    except Exception as e:
+        logger.error(f"Error in admin_service_help: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_update_help_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تحديث سعر ساعدوني طالب"""
@@ -4692,188 +5128,233 @@ async def process_update_help_price(update: Update, context: ContextTypes.DEFAUL
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال سعر صحيح (أرقام فقط):")
         return "UPDATE_HELP_PRICE"
+    except Exception as e:
+        logger.error(f"Error in process_update_help_price: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def admin_manage_materials(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة المواد التعليمية"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    materials = db.get_study_materials(active_only=False)
-    
-    if not materials:
-        await query.edit_message_text("📭 لا توجد مواد تعليمية.")
-        return
-    
-    keyboard = []
-    
-    for material in materials:
-        status_icon = "✅" if material['is_active'] == 1 else "⏸️"
-        button_text = f"{status_icon} {material['title'][:30]}"
-        callback_data = f"manage_material_{material['material_id']}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-    
-    keyboard.append([
-        InlineKeyboardButton("➕ إضافة مادة", callback_data="admin_add_material"),
-        InlineKeyboardButton("🔙 رجوع", callback_data="admin_services")
-    ])
-    
-    await query.edit_message_text(
-        "📖 *إدارة المواد التعليمية*\n\nاختر المادة التي تريد إدارتها:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        materials = db.get_study_materials(active_only=False)
+        
+        if not materials:
+            await query.edit_message_text("📭 لا توجد مواد تعليمية.")
+            return
+        
+        keyboard = []
+        
+        for material in materials:
+            status_icon = "✅" if material['is_active'] == 1 else "⏸️"
+            button_text = f"{status_icon} {material['title'][:30]}"
+            callback_data = f"manage_material_{material['material_id']}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        keyboard.append([
+            InlineKeyboardButton("➕ إضافة مادة", callback_data="admin_add_material"),
+            InlineKeyboardButton("🔙 رجوع", callback_data="admin_services")
+        ])
+        
+        await query.edit_message_text(
+            "📖 *إدارة المواد التعليمية*\n\nاختر المادة التي تريد إدارتها:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_manage_materials: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def manage_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة مادة محددة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    material_id = int(query.data.replace("manage_material_", ""))
-    material = next((m for m in db.get_study_materials(active_only=False) if m['material_id'] == material_id), None)
-    
-    if not material:
-        await query.edit_message_text("❌ المادة غير موجودة.")
-        return
-    
-    status_text = "مفعلة" if material['is_active'] == 1 else "معطلة"
-    action_text = "تعطيل" if material['is_active'] == 1 else "تفعيل"
-    
-    keyboard = [
-        [InlineKeyboardButton(f"{action_text} المادة", callback_data=f"toggle_material_{material_id}_{0 if material['is_active'] == 1 else 1}")],
-        [InlineKeyboardButton("🗑️ حذف المادة", callback_data=f"delete_material_{material_id}")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_manage_materials")]
-    ]
-    
-    material_text = f"""
-    📖 *إدارة المادة: {material['title']}*
-    
-    📝 *الوصف:* {material['description']}
-    🎓 *المرحلة:* {material['stage']}
-    📊 *الحالة:* {status_text}
-    📅 *تاريخ الإضافة:* {format_date(material['added_at'])}
-    
-    *اختر الإجراء المطلوب:*
-    """
-    
-    await query.edit_message_text(
-        material_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        material_id = int(query.data.replace("manage_material_", ""))
+        material = next((m for m in db.get_study_materials(active_only=False) if m['material_id'] == material_id), None)
+        
+        if not material:
+            await query.edit_message_text("❌ المادة غير موجودة.")
+            return
+        
+        status_text = "مفعلة" if material['is_active'] == 1 else "معطلة"
+        action_text = "تعطيل" if material['is_active'] == 1 else "تفعيل"
+        
+        keyboard = [
+            [InlineKeyboardButton(f"{action_text} المادة", callback_data=f"toggle_material_{material_id}_{0 if material['is_active'] == 1 else 1}")],
+            [InlineKeyboardButton("🗑️ حذف المادة", callback_data=f"delete_material_{material_id}")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_manage_materials")]
+        ]
+        
+        material_text = f"""
+        📖 *إدارة المادة: {material['title']}*
+        
+        📝 *الوصف:* {material['description']}
+        🎓 *المرحلة:* {material['stage']}
+        📊 *الحالة:* {status_text}
+        📅 *تاريخ الإضافة:* {format_date(material['added_at'])}
+        
+        *اختر الإجراء المطلوب:*
+        """
+        
+        await query.edit_message_text(
+            material_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in manage_material: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def toggle_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تفعيل/تعطيل مادة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    data = query.data.replace("toggle_material_", "")
-    parts = data.split("_")
-    
-    if len(parts) >= 2:
-        material_id = int(parts[0])
-        new_status = int(parts[1])
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        if db.toggle_study_material(material_id, new_status):
-            status_text = "مفعلة" if new_status == 1 else "معطلة"
-            await query.edit_message_text(
-                f"✅ تم {status_text} المادة بنجاح.",
-                reply_markup=get_admin_keyboard()
-            )
-        else:
-            await query.edit_message_text(
-                "❌ فشل في تحديث حالة المادة.",
-                reply_markup=get_admin_keyboard()
-            )
+        data = query.data.replace("toggle_material_", "")
+        parts = data.split("_")
+        
+        if len(parts) >= 2:
+            material_id = int(parts[0])
+            new_status = int(parts[1])
+            
+            if db.toggle_study_material(material_id, new_status):
+                status_text = "مفعلة" if new_status == 1 else "معطلة"
+                await query.edit_message_text(
+                    f"✅ تم {status_text} المادة بنجاح.",
+                    reply_markup=get_admin_keyboard()
+                )
+            else:
+                await query.edit_message_text(
+                    "❌ فشل في تحديث حالة المادة.",
+                    reply_markup=get_admin_keyboard()
+                )
+    except Exception as e:
+        logger.error(f"Error in toggle_material: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def delete_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """حذف مادة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    material_id = int(query.data.replace("delete_material_", ""))
-    
-    if db.delete_study_material(material_id):
-        await query.edit_message_text(
-            f"✅ تم حذف المادة #{material_id} بنجاح.",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await query.edit_message_text(
-            f"❌ فشل في حذف المادة #{material_id}.",
-            reply_markup=get_admin_keyboard()
-        )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        material_id = int(query.data.replace("delete_material_", ""))
+        
+        if db.delete_study_material(material_id):
+            await query.edit_message_text(
+                f"✅ تم حذف المادة #{material_id} بنجاح.",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ فشل في حذف المادة #{material_id}.",
+                reply_markup=get_admin_keyboard()
+            )
+    except Exception as e:
+        logger.error(f"Error in delete_material: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_add_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إضافة مادة جديدة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "➕ *إضافة مادة جديدة*\n\nأرسل عنوان المادة:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ADMIN_ADD_MATERIAL_TITLE
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "➕ *إضافة مادة جديدة*\n\nأرسل عنوان المادة:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return ADMIN_ADD_MATERIAL_TITLE
+    except Exception as e:
+        logger.error(f"Error in admin_add_material: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_material_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة عنوان المادة"""
-    context.user_data['material_title'] = update.message.text
-    await update.message.reply_text("✅ تم حفظ العنوان.\n\nأرسل وصف المادة:")
-    return ADMIN_ADD_MATERIAL_DESC
+    try:
+        context.user_data['material_title'] = update.message.text
+        await update.message.reply_text("✅ تم حفظ العنوان.\n\nأرسل وصف المادة:")
+        return ADMIN_ADD_MATERIAL_DESC
+    except Exception as e:
+        logger.error(f"Error in process_material_title: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_material_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة وصف المادة"""
-    context.user_data['material_desc'] = update.message.text
-    await update.message.reply_text("✅ تم حفظ الوصف.\n\nأرسل المرحلة (مثل: الأول المتوسط, الثالث الثانوي):")
-    return ADMIN_ADD_MATERIAL_STAGE
+    try:
+        context.user_data['material_desc'] = update.message.text
+        await update.message.reply_text("✅ تم حفظ الوصف.\n\nأرسل المرحلة (مثل: الأول المتوسط, الثالث الثانوي):")
+        return ADMIN_ADD_MATERIAL_STAGE
+    except Exception as e:
+        logger.error(f"Error in process_material_desc: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_material_stage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة مرحلة المادة"""
-    context.user_data['material_stage'] = update.message.text
-    await update.message.reply_text("✅ تم حفظ المرحلة.\n\nأرسل ملف المادة:")
-    return ADMIN_ADD_MATERIAL_FILE
+    try:
+        context.user_data['material_stage'] = update.message.text
+        await update.message.reply_text("✅ تم حفظ المرحلة.\n\nأرسل ملف المادة:")
+        return ADMIN_ADD_MATERIAL_FILE
+    except Exception as e:
+        logger.error(f"Error in process_material_stage: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_material_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة ملف المادة"""
-    if not update.message.document:
-        await update.message.reply_text("❌ يرجى إرسال ملف. حاول مرة أخرى:")
-        return ADMIN_ADD_MATERIAL_FILE
-    
-    file_id = update.message.document.file_id
-    file_type = update.message.document.mime_type or 'application/octet-stream'
-    
-    title = context.user_data.get('material_title')
-    description = context.user_data.get('material_desc')
-    stage = context.user_data.get('material_stage')
-    user_id = update.effective_user.id
-    
-    material_id = db.add_study_material(title, description, stage, file_id, file_type, user_id)
-    
-    context.user_data.pop('material_title', None)
-    context.user_data.pop('material_desc', None)
-    context.user_data.pop('material_stage', None)
-    
-    await update.message.reply_text(
-        f"✅ تم إضافة المادة بنجاح (#{material_id})",
-        reply_markup=get_admin_keyboard()
-    )
-    
-    return ConversationHandler.END
+    try:
+        if not update.message.document:
+            await update.message.reply_text("❌ يرجى إرسال ملف. حاول مرة أخرى:")
+            return ADMIN_ADD_MATERIAL_FILE
+        
+        file_id = update.message.document.file_id
+        file_type = update.message.document.mime_type or 'application/octet-stream'
+        
+        title = context.user_data.get('material_title')
+        description = context.user_data.get('material_desc')
+        stage = context.user_data.get('material_stage')
+        user_id = update.effective_user.id
+        
+        material_id = db.add_study_material(title, description, stage, file_id, file_type, user_id)
+        
+        context.user_data.pop('material_title', None)
+        context.user_data.pop('material_desc', None)
+        context.user_data.pop('material_stage', None)
+        
+        await update.message.reply_text(
+            f"✅ تم إضافة المادة بنجاح (#{material_id})",
+            reply_markup=get_admin_keyboard()
+        )
+        
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in process_material_file: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 # ====================== الإحصائيات الكاملة ======================
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4881,118 +5362,126 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    stats = db.get_overall_stats()
-    
-    stats_text = """
-    📊 *الإحصائيات الكاملة*
-    
-    *إحصائيات المستخدمين:*
-    """
-    
-    users = stats.get('users', {})
-    today = stats.get('today', {})
-    
-    stats_text += f"""
-    👥 إجمالي المستخدمين: {users.get('total_users', 0):,}
-    👑 مستخدمين VIP: {users.get('vip_users', 0):,}
-    🚫 مستخدمين محظورين: {users.get('banned_users', 0):,}
-    🏦 إجمالي الأرصدة: {format_currency(users.get('total_balance', 0))}
-    
-    *إحصائيات اليوم:*
-    👤 مستخدمين جدد: {today.get('today_users', 0)}
-    👑 VIP جدد: {today.get('today_vip', 0)}
-    
-    *إحصائيات المبيعات:*
-    """
-    
-    sales = stats.get('sales', {})
-    
-    stats_text += f"""
-    🛒 إجمالي المبيعات: {sales.get('total_sales', 0):,}
-    💰 إجمالي الإيرادات: {format_currency(sales.get('total_revenue', 0))}
-    💵 أرباح المدرسين: {format_currency(sales.get('total_teacher_earnings', 0))}
-    💼 أرباح الإدارة: {format_currency(sales.get('total_admin_earnings', 0))}
-    
-    *إحصائيات مالية:*
-    """
-    
-    finance_stats = db.get_financial_stats()
-    overall = finance_stats.get('overall', {})
-    
-    stats_text += f"""
-    💰 إجمالي الشحنات: {format_currency(overall.get('total_charged', 0))}
-    💸 إجمالي المدفوعات: {format_currency(overall.get('total_payments', 0))}
-    🔄 إجمالي الخصومات: {format_currency(overall.get('total_deducted', 0))}
-    ↩️ إجمالي الاسترجاعات: {format_currency(overall.get('total_refunds', 0))}
-    📊 إجمالي المعاملات: {overall.get('total_transactions', 0):,}
-    """
-    
-    services_stats = finance_stats.get('services', [])
-    if services_stats:
-        stats_text += "\n*إحصائيات الخدمات:*"
-        for service in services_stats[:5]:
-            stats_text += f"\n• {service['service']}: {service['count']:,} عملية - {format_currency(service['total_amount'])}"
-    
-    keyboard = [
-        [InlineKeyboardButton("📈 إحصائيات مالية", callback_data="admin_finance_stats"),
-         InlineKeyboardButton("👑 إحصائيات VIP", callback_data="admin_vip_stats")],
-        [InlineKeyboardButton("📅 إحصائيات يومية", callback_data="admin_daily_stats")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
-    ]
-    
-    await query.edit_message_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        stats = db.get_overall_stats()
+        
+        stats_text = """
+        📊 *الإحصائيات الكاملة*
+        
+        *إحصائيات المستخدمين:*
+        """
+        
+        users = stats.get('users', {})
+        today = stats.get('today', {})
+        
+        stats_text += f"""
+        👥 إجمالي المستخدمين: {users.get('total_users', 0):,}
+        👑 مستخدمين VIP: {users.get('vip_users', 0):,}
+        🚫 مستخدمين محظورين: {users.get('banned_users', 0):,}
+        🏦 إجمالي الأرصدة: {format_currency(users.get('total_balance', 0))}
+        
+        *إحصائيات اليوم:*
+        👤 مستخدمين جدد: {today.get('today_users', 0)}
+        👑 VIP جدد: {today.get('today_vip', 0)}
+        
+        *إحصائيات المبيعات:*
+        """
+        
+        sales = stats.get('sales', {})
+        
+        stats_text += f"""
+        🛒 إجمالي المبيعات: {sales.get('total_sales', 0):,}
+        💰 إجمالي الإيرادات: {format_currency(sales.get('total_revenue', 0))}
+        💵 أرباح المدرسين: {format_currency(sales.get('total_teacher_earnings', 0))}
+        💼 أرباح الإدارة: {format_currency(sales.get('total_admin_earnings', 0))}
+        
+        *إحصائيات مالية:*
+        """
+        
+        finance_stats = db.get_financial_stats()
+        overall = finance_stats.get('overall', {})
+        
+        stats_text += f"""
+        💰 إجمالي الشحنات: {format_currency(overall.get('total_charged', 0))}
+        💸 إجمالي المدفوعات: {format_currency(overall.get('total_payments', 0))}
+        🔄 إجمالي الخصومات: {format_currency(overall.get('total_deducted', 0))}
+        ↩️ إجمالي الاسترجاعات: {format_currency(overall.get('total_refunds', 0))}
+        📊 إجمالي المعاملات: {overall.get('total_transactions', 0):,}
+        """
+        
+        services_stats = finance_stats.get('services', [])
+        if services_stats:
+            stats_text += "\n*إحصائيات الخدمات:*"
+            for service in services_stats[:5]:
+                stats_text += f"\n• {service['service']}: {service['count']:,} عملية - {format_currency(service['total_amount'])}"
+        
+        keyboard = [
+            [InlineKeyboardButton("📈 إحصائيات مالية", callback_data="admin_finance_stats"),
+             InlineKeyboardButton("👑 إحصائيات VIP", callback_data="admin_vip_stats")],
+            [InlineKeyboardButton("📅 إحصائيات يومية", callback_data="admin_daily_stats")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+        ]
+        
+        await query.edit_message_text(
+            stats_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_stats: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def admin_daily_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض الإحصائيات اليومية"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    daily_stats = db.get_daily_stats()
-    
-    if not daily_stats:
-        await query.edit_message_text("📭 لا توجد إحصائيات يومية متاحة.")
-        return
-    
-    stats_text = "📅 *الإحصائيات اليومية (آخر 7 أيام)*\n\n"
-    
-    for stat in daily_stats:
-        date = stat['stat_date']
-        new_users = stat['new_users']
-        active_users = stat['active_users']
-        total_income = stat['total_income']
-        vip_subscriptions = stat['vip_subscriptions']
-        lecture_sales = stat['lecture_sales']
+    try:
+        if not is_admin(query.from_user.id):
+            return
         
-        stats_text += f"""
-        📅 *{date}:*
-        👤 مستخدمين جدد: {new_users}
-        📱 مستخدمين نشطين: {active_users}
-        💰 الدخل: {format_currency(total_income)}
-        👑 اشتراكات VIP: {vip_subscriptions}
-        🎬 مبيعات محاضرات: {lecture_sales}
-        ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-        """
-    
-    keyboard = [
-        [InlineKeyboardButton("📊 إحصائيات كاملة", callback_data="admin_stats")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
-    ]
-    
-    await query.edit_message_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        daily_stats = db.get_daily_stats()
+        
+        if not daily_stats:
+            await query.edit_message_text("📭 لا توجد إحصائيات يومية متاحة.")
+            return
+        
+        stats_text = "📅 *الإحصائيات اليومية (آخر 7 أيام)*\n\n"
+        
+        for stat in daily_stats:
+            date = stat['stat_date']
+            new_users = stat['new_users']
+            active_users = stat['active_users']
+            total_income = stat['total_income']
+            vip_subscriptions = stat['vip_subscriptions']
+            lecture_sales = stat['lecture_sales']
+            
+            stats_text += f"""
+            📅 *{date}:*
+            👤 مستخدمين جدد: {new_users}
+            📱 مستخدمين نشطين: {active_users}
+            💰 الدخل: {format_currency(total_income)}
+            👑 اشتراكات VIP: {vip_subscriptions}
+            🎬 مبيعات محاضرات: {lecture_sales}
+            ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            """
+        
+        keyboard = [
+            [InlineKeyboardButton("📊 إحصائيات كاملة", callback_data="admin_stats")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+        ]
+        
+        await query.edit_message_text(
+            stats_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_daily_stats: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 # ====================== الإذاعة ======================
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5000,71 +5489,81 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    await query.edit_message_text(
-        "📢 *الإذاعة للمستخدمين*\n\nأرسل النص الذي تريد إرساله لجميع المستخدمين:\n\nيمكنك استخدام Markdown للتنسيق.",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ADMIN_BROADCAST
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        await query.edit_message_text(
+            "📢 *الإذاعة للمستخدمين*\n\nأرسل النص الذي تريد إرساله لجميع المستخدمين:\n\nيمكنك استخدام Markdown للتنسيق.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return ADMIN_BROADCAST
+    except Exception as e:
+        logger.error(f"Error in admin_broadcast: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة الإذاعة"""
-    broadcast_text = update.message.text
-    
-    if not broadcast_text or len(broadcast_text.strip()) < 5:
-        await update.message.reply_text("❌ النص قصير جداً. يرجى إرسال نص أطول.")
-        return ADMIN_BROADCAST
-    
-    users = db.get_all_users()
-    total_users = len(users)
-    
-    await update.message.reply_text(f"📤 جارٍ إرسال الإذاعة لـ {total_users:,} مستخدم...")
-    
-    success_count = 0
-    fail_count = 0
-    banned_count = 0
-    
-    for user in users:
-        try:
-            if user['is_banned']:
-                banned_count += 1
-                continue
-            
-            await context.bot.send_message(
-                user['user_id'],
-                f"📢 *إشعار من إدارة بوت 'يلا نتعلم':*\n\n{broadcast_text}",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            success_count += 1
-            
-            await asyncio.sleep(0.05)
-            
-        except Exception as e:
-            logger.error(f"فشل إرسال إذاعة إلى {user['user_id']}: {e}")
-            fail_count += 1
-    
-    result_text = f"""
-    ✅ *تم إرسال الإذاعة بنجاح*
-    
-    📊 *النتائج:*
-    👥 إجمالي المستخدمين: {total_users:,}
-    ✅ الناجحة: {success_count:,}
-    ❌ الفاشلة: {fail_count:,}
-    🚫 المحظورين: {banned_count:,}
-    
-    📈 نسبة النجاح: {(success_count/total_users*100 if total_users > 0 else 0):.1f}%
-    """
-    
-    await update.message.reply_text(
-        result_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_admin_keyboard()
-    )
-    
-    return ConversationHandler.END
+    try:
+        broadcast_text = update.message.text
+        
+        if not broadcast_text or len(broadcast_text.strip()) < 5:
+            await update.message.reply_text("❌ النص قصير جداً. يرجى إرسال نص أطول.")
+            return ADMIN_BROADCAST
+        
+        users = db.get_all_users()
+        total_users = len(users)
+        
+        await update.message.reply_text(f"📤 جارٍ إرسال الإذاعة لـ {total_users:,} مستخدم...")
+        
+        success_count = 0
+        fail_count = 0
+        banned_count = 0
+        
+        for user in users:
+            try:
+                if user['is_banned']:
+                    banned_count += 1
+                    continue
+                
+                await context.bot.send_message(
+                    user['user_id'],
+                    f"📢 *إشعار من إدارة بوت 'يلا نتعلم':*\n\n{broadcast_text}",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                success_count += 1
+                
+                await asyncio.sleep(0.05)
+                
+            except Exception as e:
+                logger.error(f"فشل إرسال إذاعة إلى {user['user_id']}: {e}")
+                fail_count += 1
+        
+        result_text = f"""
+        ✅ *تم إرسال الإذاعة بنجاح*
+        
+        📊 *النتائج:*
+        👥 إجمالي المستخدمين: {total_users:,}
+        ✅ الناجحة: {success_count:,}
+        ❌ الفاشلة: {fail_count:,}
+        🚫 المحظورين: {banned_count:,}
+        
+        📈 نسبة النجاح: {(success_count/total_users*100 if total_users > 0 else 0):.1f}%
+        """
+        
+        await update.message.reply_text(
+            result_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_admin_keyboard()
+        )
+        
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in process_broadcast: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 # ====================== الإعدادات ======================
 async def admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5072,77 +5571,90 @@ async def admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    maintenance_mode = db.get_maintenance_mode()
-    invite_reward = db.get_invite_reward()
-    vip_price = db.get_vip_subscription_price()
-    
-    keyboard = [
-        [InlineKeyboardButton(f"🔧 وضع الصيانة: {'✅ مفعل' if maintenance_mode else '❌ معطل'}", 
-         callback_data="toggle_maintenance")],
-        [InlineKeyboardButton(f"💰 تحديث مكافأة الدعوة ({format_currency(invite_reward)})", 
-         callback_data="update_invite_reward")],
-        [InlineKeyboardButton(f"👑 تحديث سعر VIP ({format_currency(vip_price)})", 
-         callback_data="admin_update_vip_price")],
-        [InlineKeyboardButton("📊 عرض إحصائيات متقدمة", callback_data="admin_stats")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
-    ]
-    
-    settings_text = f"""
-    🔧 *إعدادات البوت*
-    
-    *الإعدادات الحالية:*
-    ⚙️ وضع الصيانة: {'✅ مفعل' if maintenance_mode else '❌ معطل'}
-    🎁 مكافأة الدعوة: {format_currency(invite_reward)}
-    👑 سعر اشتراك VIP: {format_currency(vip_price)}
-    
-    *اختر الإعداد الذي تريد تعديله:*
-    """
-    
-    await query.edit_message_text(
-        settings_text,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        maintenance_mode = db.get_maintenance_mode()
+        invite_reward = db.get_invite_reward()
+        vip_price = db.get_vip_subscription_price()
+        
+        keyboard = [
+            [InlineKeyboardButton(f"🔧 وضع الصيانة: {'✅ مفعل' if maintenance_mode else '❌ معطل'}", 
+             callback_data="toggle_maintenance")],
+            [InlineKeyboardButton(f"💰 تحديث مكافأة الدعوة ({format_currency(invite_reward)})", 
+             callback_data="update_invite_reward")],
+            [InlineKeyboardButton(f"👑 تحديث سعر VIP ({format_currency(vip_price)})", 
+             callback_data="admin_update_vip_price")],
+            [InlineKeyboardButton("📊 عرض إحصائيات متقدمة", callback_data="admin_stats")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+        ]
+        
+        settings_text = f"""
+        🔧 *إعدادات البوت*
+        
+        *الإعدادات الحالية:*
+        ⚙️ وضع الصيانة: {'✅ مفعل' if maintenance_mode else '❌ معطل'}
+        🎁 مكافأة الدعوة: {format_currency(invite_reward)}
+        👑 سعر اشتراك VIP: {format_currency(vip_price)}
+        
+        *اختر الإعداد الذي تريد تعديله:*
+        """
+        
+        await query.edit_message_text(
+            settings_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Error in admin_settings: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def toggle_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تفعيل/تعطيل وضع الصيانة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_mode = db.get_maintenance_mode()
-    new_mode = not current_mode
-    
-    db.set_maintenance_mode(new_mode)
-    
-    status_text = "مفعل" if new_mode else "معطل"
-    
-    await query.edit_message_text(
-        f"✅ تم {status_text} وضع الصيانة.",
-        reply_markup=get_admin_keyboard()
-    )
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_mode = db.get_maintenance_mode()
+        new_mode = not current_mode
+        
+        db.set_maintenance_mode(new_mode)
+        
+        status_text = "مفعل" if new_mode else "معطل"
+        
+        await query.edit_message_text(
+            f"✅ تم {status_text} وضع الصيانة.",
+            reply_markup=get_admin_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error in toggle_maintenance: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
 
 async def update_invite_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تحديث مكافأة الدعوة"""
     query = update.callback_query
     await query.answer()
     
-    if not is_admin(query.from_user.id):
-        return
-    
-    current_reward = db.get_invite_reward()
-    
-    await query.edit_message_text(
-        f"💰 *تحديث مكافأة الدعوة*\n\nالمكافأة الحالية: {format_currency(current_reward)}\n\nأرسل المكافأة الجديدة:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    return ADMIN_UPDATE_INVITE_REWARD
+    try:
+        if not is_admin(query.from_user.id):
+            return
+        
+        current_reward = db.get_invite_reward()
+        
+        await query.edit_message_text(
+            f"💰 *تحديث مكافأة الدعوة*\n\nالمكافأة الحالية: {format_currency(current_reward)}\n\nأرسل المكافأة الجديدة:",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        return ADMIN_UPDATE_INVITE_REWARD
+    except Exception as e:
+        logger.error(f"Error in update_invite_reward: {e}")
+        await query.edit_message_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 async def process_update_invite_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة تحديث مكافأة الدعوة"""
@@ -5163,6 +5675,10 @@ async def process_update_invite_reward(update: Update, context: ContextTypes.DEF
     except ValueError:
         await update.message.reply_text("❌ يرجى إرسال مكافأة صحيحة (أرقام فقط):")
         return ADMIN_UPDATE_INVITE_REWARD
+    except Exception as e:
+        logger.error(f"Error in process_update_invite_reward: {e}")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        return ConversationHandler.END
 
 # ====================== معالجات إضافية ======================
 async def noop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5179,6 +5695,36 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     return ConversationHandler.END
 
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج الأخطاء العالمي"""
+    logger.error(f"حدث خطأ غير معالج: {context.error}")
+    
+    # تسجيل تفاصيل الخطأ
+    error_traceback = traceback.format_exc()
+    logger.error(f"تفاصيل الخطأ:\n{error_traceback}")
+    
+    # إرسال رسالة للمستخدم
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
+            )
+        except:
+            pass
+    
+    # إرسال إشعار للمشرف
+    try:
+        error_msg = f"""
+        ⚠️ *خطأ في البوت*
+        
+        📍 الخطأ: {str(context.error)[:200]}
+        
+        👤 المستخدم: {update.effective_user.id if update and update.effective_user else 'غير معروف'}
+        """
+        await context.bot.send_message(ADMIN_ID, error_msg, parse_mode=ParseMode.MARKDOWN)
+    except:
+        pass
+
 # ====================== الدالة الرئيسية ======================
 def main():
     """الدالة الرئيسية لتشغيل البوت"""
@@ -5193,6 +5739,11 @@ def main():
     print(f"💬 الدعم الفني: {SUPPORT_USERNAME}")
     print(f"📢 قناة البوت: {CHANNEL_USERNAME}")
     print("=" * 60)
+    
+    # إنشاء نسخة احتياطية من قاعدة البيانات
+    backup_file = db.backup_database()
+    if backup_file:
+        print(f"📦 تم إنشاء نسخة احتياطية: {backup_file}")
     
     try:
         import telegram
@@ -5438,6 +5989,7 @@ def main():
     application.add_handler(CallbackQueryHandler(vip_my_lectures, pattern='^vip_my_lectures$'))
     application.add_handler(CallbackQueryHandler(vip_my_earnings, pattern='^vip_my_earnings$'))
     application.add_handler(CallbackQueryHandler(download_lecture, pattern='^download_lecture_'))
+    application.add_handler(CallbackQueryHandler(buy_lecture, pattern='^buy_lecture_'))
     
     # أزرار المساعدة
     application.add_handler(CallbackQueryHandler(invite_friend, pattern='^invite_friend$'))
@@ -5450,7 +6002,6 @@ def main():
     application.add_handler(CallbackQueryHandler(navigate_materials, pattern='^(material_prev|material_next)$'))
     application.add_handler(CallbackQueryHandler(download_material, pattern='^download_material_'))
     application.add_handler(CallbackQueryHandler(navigate_lectures, pattern='^(lecture_prev|lecture_next)$'))
-    application.add_handler(CallbackQueryHandler(buy_lecture, pattern='^buy_lecture_'))
     application.add_handler(CallbackQueryHandler(navigate_pending_lectures, pattern='^(pending_lecture_prev|pending_lecture_next)$'))
     application.add_handler(CallbackQueryHandler(navigate_questions, pattern='^(question_prev|question_next)$'))
     
@@ -5490,23 +6041,13 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_manage_materials, pattern='^admin_manage_materials$'))
     
     # الزر الرئيسي
-    application.add_handler(CallbackQueryHandler(start_command, pattern='^start$'))
+    application.add_handler(CallbackQueryHandler(handle_callback_start, pattern='^start$'))
     application.add_handler(CallbackQueryHandler(noop, pattern='^noop$'))
     
     # معالج الرسائل النصية الأخرى
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, start_command))
     
     # معالج الأخطاء
-    async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        logger.error(f"حدث خطأ: {context.error}")
-        try:
-            if update and update.effective_message:
-                await update.effective_message.reply_text(
-                    "❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
-                )
-        except:
-            pass
-    
     application.add_error_handler(error_handler)
     
     # بدء البوت
